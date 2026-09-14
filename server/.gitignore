@@ -1,0 +1,52 @@
+# Environment files and local secrets
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+
+# Private credentials
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+service-account*.json
+
+# Dependencies and generated output
+node_modules/
+dist/
+build/
+coverage/
+.cache/
+.turbo/
+.vite/
+.vercel/
+.wrangler/
+*.tsbuildinfo
+
+# Logs and local runtime files
+logs/
+*.log
+*.pid
+*.pid.lock
+*.local
+*.private
+
+# Editor and operating-system files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak

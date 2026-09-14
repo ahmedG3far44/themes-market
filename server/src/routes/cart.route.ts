@@ -1,0 +1,11 @@
+import { Router } from "express";
+import { requireCustomer, requireDatabaseUser } from "../middlewares/auth.ts";
+import { cartDiscountSchema, cartItemSchema, parseOrThrow } from "../schemas/marketplace.ts";
+import { addCartItem, applyCartDiscount, clearCartDiscount, getCart, removeCartItem } from "../services/cart.service.ts";
+const router = Router(); router.use(requireDatabaseUser, requireCustomer);
+router.get("/", async (req, res, next) => { try { res.json({ success: true, data: await getCart(req.currentUser!._id) }); } catch (error) { next(error); } });
+router.post("/items", async (req, res, next) => { try { const { themeId } = parseOrThrow(cartItemSchema, req.body); res.status(201).json({ success: true, data: await addCartItem(req.currentUser!._id, themeId), message: "Added to cart" }); } catch (error) { next(error); } });
+router.delete("/items/:themeId", async (req, res, next) => { try { const { themeId } = parseOrThrow(cartItemSchema, req.params); res.json({ success: true, data: await removeCartItem(req.currentUser!._id, themeId), message: "Removed from cart" }); } catch (error) { next(error); } });
+router.post("/discount", async (req, res, next) => { try { const { code } = parseOrThrow(cartDiscountSchema, req.body); res.json({ success: true, data: await applyCartDiscount(req.currentUser!._id, code), message: "Discount applied" }); } catch (error) { next(error); } });
+router.delete("/discount", async (req, res, next) => { try { res.json({ success: true, data: await clearCartDiscount(req.currentUser!._id) }); } catch (error) { next(error); } });
+export default router;

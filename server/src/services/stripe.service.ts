@@ -1,0 +1,89 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
+import Stripe from "stripe";
+import env from "../config/env.ts";
+
+export interface MarketplaceLineItem {
+  name: string;
+  description?: string;
+  unitAmountMinor: number;
+  quantity?: number;
+}
+
+interface MarketplaceCheckoutInput {
+  items: MarketplaceLineItem[];
+  currency: string;
+  customerEmail: string;
+  successUrl: string;
+  cancelUrl: string;
+  metadata: Record<string, string>;
+  idempotencyKey: string;
+}
+
+export interface StripeAmountSnapshot {
+  amount_subtotal?: number | null;
+  amount_total?: number | null;
+  currency?: string | null;
+  total_details?: { amount_discount?: number | null; amount_shipping?: number | null; amount_tax?: number | null } | null;
+}
+
+export function validateStripeCheckoutAmounts(session: StripeAmountSnapshot, expectedBeforeTaxMinor: number, expectedCurrency: string) {
+  const currency = session.currency?.toUpperCase();
+  const subtotal = session.amount_subtotal;
+  const total = session.amount_total;
+  const stripeDiscount = session.total_details?.amount_discount ?? 0;
+  const shipping = session.total_details?.amount_shipping ?? 0;
+  const tax = session.total_details?.amount_tax ?? (typeof total === "number" && typeof subtotal === "number" ? total - subtotal : null);
+  if (currency !== expectedCurrency.toUpperCase()) throw new Error("Stripe checkout currency does not match the order snapshot");
+  if (subtotal !== expectedBeforeTaxMinor) throw new Error("Stripe checkout subtotal does not match the order snapshot");
+  if (stripeDiscount !== 0 || shipping !== 0) throw new Error("Stripe checkout contains an unexpected provider discount or shipping charge");
+  if (typeof total !== "number" || typeof tax !== "number" || tax < 0 || total !== subtotal + tax) throw new Error("Stripe checkout total does not match its subtotal and tax");
+  return { subtotalMinor: subtotal, taxMinor: tax, totalMinor: total, currency };
+}
+
+function stripeClient(): Stripe {
+  if (!env.STRIPE_SECRET_KEY) throw new Error("Stripe is not configured. Set STRIPE_SECRET_KEY");
+  return new Stripe(env.STRIPE_SECRET_KEY);
+}
+
+function successUrlWithSessionId(value: string): string {
+  if (value.includes("{CHECKOUT_SESSION_ID}")) return value;
+  return `${value}${value.includes("?") ? "&" : "?"}session_id={CHECKOUT_SESSION_ID}`;
+}
+
+export async function createMarketplaceStripeCheckout(input: MarketplaceCheckoutInput) {
+  if (!input.items.length) throw new Error("Checkout requires at least one item");
+  if (input.items.some((item) => !Number.isInteger(item.unitAmountMinor) || item.unitAmountMinor < 0)) throw new Error("Stripe checkout contains an invalid item price");
+
+  const session = await stripeClient().checkout.sessions.create({
+    mode: "payment",
+    customer_email: input.customerEmail,
+    line_items: input.items.map((item) => ({
+      price_data: {
+        currency: input.currency.toLowerCase(), unit_amount: item.unitAmountMinor,
+        product_data: { name: item.name, tax_code: "txcd_10202003", ...(item.description ? { description: item.description } : {}) },
+      },
+      quantity: item.quantity ?? 1,
+    })),
+    success_url: successUrlWithSessionId(input.successUrl),
+    cancel_url: input.cancelUrl,
+    client_reference_id: input.metadata.orderId,
+    metadata: input.metadata,
+    payment_intent_data: { metadata: input.metadata },
+  }, { idempotencyKey: input.idempotencyKey });
+
+  return { id: session.id, url: session.url, paymentStatus: session.payment_status, amountSubtotal: session.amount_subtotal, amountTotal: session.amount_total, currency: session.currency, totalDetails: session.total_details };
+}
+
+export function verifyStripeSignature(rawBody: Buffer, signatureHeader: string, toleranceSeconds = 300): boolean {
+  if (!env.STRIPE_WEBHOOK_SECRET) throw new Error("Stripe webhook secret is not configured");
+  const parts = signatureHeader.split(",").map((part) => part.trim().split("=", 2) as [string, string]);
+  const timestamp = Number(parts.find(([key]) => key === "t")?.[1]);
+  const signatures = parts.filter(([key]) => key === "v1").map(([, value]) => value);
+  if (!timestamp || !signatures.length || Math.abs(Date.now() / 1000 - timestamp) > toleranceSeconds) return false;
+  const expected = createHmac("sha256", env.STRIPE_WEBHOOK_SECRET).update(`${timestamp}.${rawBody.toString("utf8")}`).digest("hex");
+  const expectedBuffer = Buffer.from(expected);
+  return signatures.some((signature) => {
+    const receivedBuffer = Buffer.from(signature);
+    return expectedBuffer.length === receivedBuffer.length && timingSafeEqual(expectedBuffer, receivedBuffer);
+  });
+}
