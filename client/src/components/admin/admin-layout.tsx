@@ -1,15 +1,15 @@
-import { BarChart3, CreditCard, Menu, Percent, Palette, Users, X } from "lucide-react";
+import { useState } from "react";
 import { UserButton } from "@clerk/react";
 import { NavLink, Outlet } from "react-router-dom";
-import { useState } from "react";
 import { useAppAuth } from "../../context/auth-store";
+import { CreditCard, Menu, Users, X, BadgePercent, ShoppingBag, LayoutPanelTop, ChartSpline } from "lucide-react";
 
 const navigation = [
-  { to: "/admin", label: "Insights", icon: BarChart3, end: true },
+  { to: "/admin", label: "Insights", icon: ChartSpline, end: true },
   { to: "/admin/users", label: "Manage users", icon: Users },
-  { to: "/admin/themes", label: "Portfolio themes", icon: Palette },
-  { to: "/admin/orders", label: "Marketplace orders", icon: CreditCard },
-  { to: "/admin/discounts", label: "Discounts", icon: Percent },
+  { to: "/admin/themes", label: "Portfolio themes", icon: LayoutPanelTop },
+  { to: "/admin/orders", label: "Marketplace orders", icon: ShoppingBag },
+  { to: "/admin/discounts", label: "Discounts", icon: BadgePercent },
   { to: "/admin/transactions", label: "Legacy transactions", icon: CreditCard },
 ];
 
