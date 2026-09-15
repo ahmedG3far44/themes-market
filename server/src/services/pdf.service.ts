@@ -151,14 +151,12 @@ export function createInvoicePdf(data: InvoiceData): Promise<Buffer> {
   if (data.order.discountMinor > 0) totalRow(`Discount${data.order.discountSnapshot?.code ? ` (${clean(data.order.discountSnapshot.code)})` : ""}`, `-${amount(data.order.discountMinor, data.order.currency)}`, false, negative);
   totalRow("After discount", amount(netSubtotal, data.order.currency));
   if (data.order.taxMinor > 0) totalRow("Tax", amount(data.order.taxMinor, data.order.currency));
-  y += 10; // margin-top above the total paid row
+  y += 10;
   doc.moveTo(totalsX, y - 5).lineTo(right, y - 5).lineWidth(1).strokeColor(line).stroke();
 
   y += 24;
   totalRow("Total paid", amount(data.order.totalMinor, data.order.currency), true, ink);
-
-  doc.moveTo(totalsX, y - 5).lineTo(right, y - 5).lineWidth(1).strokeColor(line).stroke();
-  
+  doc.moveTo(totalsX, y - 5).lineTo(right, y - 5).lineWidth(1).strokeColor(line);
 
   doc.fillColor(muted).font("Helvetica").fontSize(8).text("Payment status: PAID", 48, y - 22);
   doc.text(`Order ID: ${clean(data.order._id)}`, 48, y - 8, { width: 270 });
