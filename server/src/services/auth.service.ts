@@ -7,6 +7,11 @@ interface ClerkEmail {
   email_address: string;
 }
 
+interface ClerkPhone {
+  id: string;
+  phone_number: string;
+}
+
 interface ClerkUser {
   id: string;
   first_name: string | null;
@@ -15,6 +20,8 @@ interface ClerkUser {
   image_url: string;
   primary_email_address_id: string | null;
   email_addresses: ClerkEmail[];
+  primary_phone_number_id: string | null;
+  phone_numbers: ClerkPhone[];
   external_accounts: Array<{ provider: string }>;
 }
 
@@ -45,6 +52,8 @@ export async function syncLoggedInUser(clerkId: string) {
   if (!primaryEmail) throw new Error("The Clerk account has no email address");
 
   const email = primaryEmail.email_address.toLowerCase();
+  const primaryPhone = clerkUser.phone_numbers?.find((item) => item.id === clerkUser.primary_phone_number_id)
+    ?? clerkUser.phone_numbers?.[0];
   const displayName = [clerkUser.first_name, clerkUser.last_name].filter(Boolean).join(" ")
     || clerkUser.username
     || email.split("@")[0]
@@ -58,6 +67,7 @@ export async function syncLoggedInUser(clerkId: string) {
         email,
         name: displayName,
         username: clerkUser.username ?? undefined,
+        phone: primaryPhone?.phone_number ?? undefined,
         avatarUrl: clerkUser.image_url,
         provider: mapProvider(clerkUser.external_accounts[0]?.provider),
         lastLoginAt: new Date(),

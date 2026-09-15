@@ -21,9 +21,11 @@ const themeBaseSchema = z.object({
   changelog: z.string().max(20_000).optional(),
   setupInstructions: z.string().max(20_000).optional(),
   deployInstructions: z.string().max(20_000).optional(),
+  instructionsFormat: z.enum(["plain", "html"]).optional(),
   previewUrl: httpsUrl,
-  imageAssetIds: z.array(objectId).max(20).default([]),
-  videoAssetIds: z.array(objectId).max(10).default([]),
+  previewAssetId: objectId,
+  imageAssetIds: z.array(objectId).min(2, "Upload at least 2 theme images").max(10, "Upload no more than 10 theme images"),
+  videoAssetIds: z.array(objectId).min(1, "Upload at least 1 tutorial video").max(2, "Upload no more than 2 tutorial videos"),
   sourceAssetId: objectId,
   featured: z.boolean().default(false),
   seoTitle: z.string().trim().max(70).optional(),
@@ -31,8 +33,9 @@ const themeBaseSchema = z.object({
 });
 
 export const themeInputSchema = themeBaseSchema.superRefine((value, context) => {
-  if (!value.imageAssetIds.length && !value.videoAssetIds.length) {
-    context.addIssue({ code: "custom", path: ["previewAssets"], message: "Upload at least one preview image or video" });
+  const ids = [value.previewAssetId, ...value.imageAssetIds, ...value.videoAssetIds, value.sourceAssetId];
+  if (new Set(ids).size !== ids.length) {
+    context.addIssue({ code: "custom", path: ["previewAssets"], message: "Use separate files for the preview, gallery, tutorials, and source" });
   }
 });
 
@@ -73,7 +76,7 @@ export const uploadPartSchema = z.object({ partNumber: z.number().int().min(1).m
 export const uploadCompleteSchema = z.object({ parts: z.array(z.object({ ETag: z.string().min(1), PartNumber: z.number().int().min(1) })).min(1) });
 export const cartItemSchema = z.object({ themeId: objectId });
 export const cartDiscountSchema = z.object({ code: z.string().trim().min(3).max(32).transform((value) => value.toUpperCase()) });
-export const checkoutSchema = z.object({ idempotencyKey: z.string().uuid(), provider: z.enum(["stripe", "paymob"]).optional() }).strict();
+export const checkoutSchema = z.object({ idempotencyKey: z.string().uuid() }).strict();
 export const idSchema = z.object({ id: objectId });
 export const stripeSessionSchema = z.object({ sessionId: z.string().trim().regex(/^cs_(?:test_|live_)?[A-Za-z0-9]+$/, "Invalid Stripe Checkout Session identifier") });
 export const slugSchema = z.object({ slug });

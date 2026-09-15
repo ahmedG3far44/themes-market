@@ -2,14 +2,15 @@ import { useState } from "react";
 import { UserButton } from "@clerk/react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useAppAuth } from "../../context/auth-store";
-import { CreditCard, Menu, Users, X, BadgePercent, ShoppingBag, LayoutPanelTop, ChartSpline } from "lucide-react";
+import { CreditCard, Menu, Users, X, ShoppingBag, LayoutPanelTop, ChartSpline, FileText, SquarePercent } from "lucide-react";
 
 const navigation = [
   { to: "/admin", label: "Insights", icon: ChartSpline, end: true },
   { to: "/admin/users", label: "Manage users", icon: Users },
   { to: "/admin/themes", label: "Portfolio themes", icon: LayoutPanelTop },
+  { to: "/admin/content", label: "Site content", icon: FileText },
   { to: "/admin/orders", label: "Marketplace orders", icon: ShoppingBag },
-  { to: "/admin/discounts", label: "Discounts", icon: BadgePercent },
+  { to: "/admin/discounts", label: "Discounts", icon: SquarePercent },
   { to: "/admin/transactions", label: "Legacy transactions", icon: CreditCard },
 ];
 
@@ -20,6 +21,7 @@ export function AdminLayout() {
   return (
     <div className="admin-shell">
       {open && <button className="sidebar-backdrop" aria-label="Close menu" onClick={() => setOpen(false)} />}
+
       <aside className={`admin-sidebar ${open ? "is-open" : ""}`}>
         <div className="brand-row">
           <NavLink className="brand" to="/">PORTFOLIO <span>MARKET</span></NavLink>

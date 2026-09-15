@@ -5,15 +5,18 @@ import ThemeModel, { type ThemeDocument } from "../models/theme.ts";
 import UploadAssetModel from "../models/upload-asset.ts";
 import { AppError } from "../utils/app-error.ts";
 import { serializeAsset } from "./upload.service.ts";
+import { themeAssetIssues, type ThemeAssetSelection } from "../utils/theme-assets.ts";
 
 type CatalogQuery = { page: number; limit: number; search?: string; stack?: string; minPrice?: number; maxPrice?: number; featured?: "true" | "false"; sort: "newest" | "price_asc" | "price_desc" | "popular" };
 
-async function mediaFor(theme: Pick<ThemeDocument, "imageAssetIds" | "videoAssetIds">) {
-  const ids = [...theme.imageAssetIds, ...theme.videoAssetIds];
+async function mediaFor(theme: Pick<ThemeDocument, "imageAssetIds" | "videoAssetIds" | "previewAssetId">) {
+  const ids = [...theme.imageAssetIds, ...theme.videoAssetIds, ...(theme.previewAssetId ? [theme.previewAssetId] : [])];
   const assets = await UploadAssetModel.find({ _id: { $in: ids }, status: "ready" }).select("+bucket +key +variants.key").lean();
   const serialized = await Promise.all(assets.map(async (asset) => [String(asset._id), await serializeAsset(asset)] as const));
   const byId = new Map(serialized);
   return {
+    previewAsset: theme.previewAssetId ? byId.get(String(theme.previewAssetId)) : undefined,
+    assetIssues: themeAssetIssues({ previewAssetId: theme.previewAssetId?.toString(), imageAssetIds: theme.imageAssetIds.map(String), videoAssetIds: theme.videoAssetIds.map(String) }, new Map(assets.map((asset) => [String(asset._id), asset]))).filter((issue) => issue.path[0] !== "sourceAssetId"),
     images: theme.imageAssetIds.map((id) => byId.get(String(id))).filter(Boolean),
     videos: theme.videoAssetIds.map((id) => byId.get(String(id))).filter(Boolean),
   };
@@ -26,7 +29,7 @@ async function serializeTheme(theme: ThemeDocument & { _id: unknown }, userId?: 
     theme.sourceAssetId ? UploadAssetModel.findById(theme.sourceAssetId).lean() : null,
   ]);
   const missingPublishRequirements = [
-    ...(!media.images.length && !media.videos.length ? ["processed preview image or video"] : []),
+    ...media.assetIssues.map((issue) => issue.message),
     ...(source?.kind !== "theme_zip" || source.status !== "ready" ? ["source ZIP"] : []),
     ...(!theme.previewUrl ? ["public preview URL"] : []),
     ...(!theme.description ? ["description"] : []),
@@ -36,7 +39,7 @@ async function serializeTheme(theme: ThemeDocument & { _id: unknown }, userId?: 
     id: String(theme._id), name: theme.name, slug: theme.slug, shortDescription: theme.shortDescription,
     description: theme.description, stack: theme.stack, features: theme.features, priceMinor: theme.priceMinor,
     currency: theme.currency, version: theme.version, changelog: theme.changelog, setupInstructions: theme.setupInstructions,
-    deployInstructions: theme.deployInstructions, previewUrl: theme.previewUrl, images: media.images, videos: media.videos,
+    deployInstructions: theme.deployInstructions, instructionsFormat: theme.instructionsFormat ?? "plain", previewUrl: theme.previewUrl, previewAsset: media.previewAsset, images: media.images, videos: media.videos,
     sourceAsset: source ? { id: String(source._id), kind: source.kind, status: source.status, originalName: source.originalName, sizeBytes: source.sizeBytes } : undefined,
     status: theme.status, featured: theme.featured, salesCount: theme.salesCount, purchased: Boolean(entitlement),
     canPurchase: source?.kind === "theme_zip" && source.status === "ready",
@@ -82,19 +85,11 @@ export async function getAdminTheme(id: string) {
 }
 
 async function validateThemeAssets(userId: unknown, input: Record<string, unknown>): Promise<void> {
-  const imageIds = input.imageAssetIds as string[];
-  const videoIds = input.videoAssetIds as string[];
-  const sourceId = input.sourceAssetId as string;
-  const requested = [...imageIds, ...videoIds, sourceId];
-  const assets = await UploadAssetModel.find({ _id: { $in: requested }, uploadedBy: userId, status: "ready" }).select("_id kind").lean();
-  const byId = new Map(assets.map((asset) => [String(asset._id), asset.kind]));
-  const invalidPreview = imageIds.some((assetId) => byId.get(assetId) !== "image") || videoIds.some((assetId) => byId.get(assetId) !== "video");
-  if (invalidPreview || (!imageIds.length && !videoIds.length)) {
-    throw new AppError(422, "THEME_PREVIEW_REQUIRED", "Upload at least one ready preview image or video");
-  }
-  if (byId.get(sourceId) !== "theme_zip") {
-    throw new AppError(422, "THEME_SOURCE_REQUIRED", "Upload a ready source ZIP file");
-  }
+  const selection = input as ThemeAssetSelection;
+  const requested = [selection.previewAssetId, ...selection.imageAssetIds, ...selection.videoAssetIds, selection.sourceAssetId].filter(Boolean);
+  const assets = await UploadAssetModel.find({ _id: { $in: requested }, uploadedBy: userId, status: "ready" }).select("_id kind contentType status").lean();
+  const issues = themeAssetIssues(selection, new Map(assets.map((asset) => [String(asset._id), asset])));
+  if (issues.length) throw new AppError(422, "THEME_ASSETS_INVALID", issues.map((issue) => issue.message).join(". "), issues);
 }
 
 export async function createTheme(userId: unknown, input: Record<string, unknown>) {
@@ -105,6 +100,7 @@ export async function updateTheme(id: string, userId: unknown, input: Record<str
   const existing = await ThemeModel.findById(id);
   if (!existing) throw new AppError(404, "THEME_NOT_FOUND", "Theme not found");
   await validateThemeAssets(userId, {
+    previewAssetId: input.previewAssetId ?? existing.previewAssetId?.toString(),
     imageAssetIds: input.imageAssetIds ?? existing.imageAssetIds.map(String),
     videoAssetIds: input.videoAssetIds ?? existing.videoAssetIds.map(String),
     sourceAssetId: input.sourceAssetId ?? (existing.sourceAssetId ? String(existing.sourceAssetId) : undefined),
@@ -118,10 +114,9 @@ export async function publishTheme(id: string, publish: boolean) {
   const theme = await ThemeModel.findById(id);
   if (!theme) throw new AppError(404, "THEME_NOT_FOUND", "Theme not found");
   if (publish) {
-    const image = await UploadAssetModel.exists({ _id: { $in: theme.imageAssetIds }, kind: "image", status: "ready" });
-    const video = await UploadAssetModel.exists({ _id: { $in: theme.videoAssetIds }, kind: "video", status: "ready" });
+    const media = await mediaFor(theme);
     const source = theme.sourceAssetId ? await UploadAssetModel.exists({ _id: theme.sourceAssetId, kind: "theme_zip", status: "ready" }) : null;
-    const missing = [...(!image && !video ? ["processed preview image or video"] : []), ...(!source ? ["source ZIP"] : []), ...(!theme.previewUrl ? ["public preview URL"] : []), ...(!theme.description ? ["description"] : []), ...(!theme.features.length ? ["feature list"] : [])];
+    const missing = [...media.assetIssues.map((issue) => issue.message), ...(!source ? ["source ZIP"] : []), ...(!theme.previewUrl ? ["public preview URL"] : []), ...(!theme.description ? ["description"] : []), ...(!theme.features.length ? ["feature list"] : [])];
     if (missing.length) throw new AppError(409, "THEME_INCOMPLETE", `Complete the theme before publishing. Missing: ${missing.join(", ")}`, [], { missing });
     theme.status = "published"; theme.publishedAt = theme.publishedAt ?? new Date();
   } else theme.status = "draft";

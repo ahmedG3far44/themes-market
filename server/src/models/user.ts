@@ -10,6 +10,7 @@ export interface UserDocument {
   avatarUrl?: string;
   name: string;
   username?: string;
+  phone?: string;
   role: UserRole | "user";
   status: UserStatus;
   lastLoginAt?: Date;
@@ -28,6 +29,7 @@ const userSchema = new Schema<UserDocument>({
   avatarUrl: String,
   name: { type: String, required: true, trim: true },
   username: { type: String, trim: true },
+  phone: { type: String, trim: true },
   role: { type: String, enum: ["admin", "customer", "user"], default: "customer", index: true },
   status: { type: String, enum: ["active", "blocked"], default: "active", index: true },
   lastLoginAt: Date,

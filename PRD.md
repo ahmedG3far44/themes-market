@@ -319,7 +319,7 @@ Rules:
 9. The cart is cleared.
 10. The success page polls the order status if fulfillment is still processing.
 
-The success-page redirect must never fulfill an order. Only a verified Stripe webhook may confirm payment and grant downloads.
+The purchase-page redirect must never fulfill an order. Only a verified Stripe webhook may confirm payment and grant downloads.
 
 ### 6.5 Purchases
 
@@ -524,7 +524,7 @@ Completed orders retain their original discount snapshot even if a code is later
 | `/cart`                    | Shopping cart                          |
 | `/sign-in`                 | Clerk sign-in                          |
 | `/sign-up`                 | Clerk registration                     |
-| `/checkout/success`        | Payment result and fulfillment polling |
+| `/purchase`                | Purchases and payment fulfillment polling |
 | `/checkout/cancel`         | Cancelled checkout                     |
 | `/account/purchases`       | Owned themes and downloads             |
 | `/account/orders/:orderId` | Customer order details                 |
@@ -780,6 +780,7 @@ Base path:
 | ------ | ---------------------------- | -------------------------------- |
 | GET    | `/orders`                    | List customer orders             |
 | GET    | `/orders/:orderId`           | View owned order                 |
+| GET    | `/orders/:orderId/invoice`   | Download paid-order invoice PDF  |
 | GET    | `/entitlements`              | List purchased themes            |
 | POST   | `/entitlements/:id/download` | Generate authorized download URL |
 
@@ -803,6 +804,7 @@ The Stripe route must receive the raw request body before JSON parsing.
 | PATCH  | `/admin/users/:id/role`       | Change role                |
 | GET    | `/admin/orders`               | List orders                |
 | GET    | `/admin/orders/:id`           | Order details              |
+| GET    | `/admin/orders/:id/invoice`   | Download paid-order invoice |
 | POST   | `/admin/themes`               | Create theme               |
 | PATCH  | `/admin/themes/:id`           | Update theme               |
 | POST   | `/admin/themes/:id/publish`   | Publish theme              |
@@ -1088,7 +1090,7 @@ The seed should:
 | Stripe webhook replay                          | Return success without creating duplicate records               |
 | Two webhooks process together                  | Unique indexes and transaction prevent duplication              |
 | Duplicate Checkout sessions                    | Only one entitlement can be created                             |
-| Success redirect arrives before webhook        | Show payment-processing state and poll                          |
+| Purchase redirect arrives before webhook       | Show payment-processing state and poll                          |
 | Discount expires before checkout creation      | Reject and recalculate total                                    |
 | Discount expires after Stripe session creation | Existing session preserves its validated snapshot               |
 | Account blocked after payment                  | Order remains recorded; download policy requires admin decision |
@@ -1297,8 +1299,6 @@ REDIS_URL=
 ```env
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
-STRIPE_SUCCESS_URL=
-STRIPE_CANCEL_URL=
 ```
 
 ### AWS

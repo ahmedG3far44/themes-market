@@ -71,6 +71,40 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}, schema?:
   return schema ? schema.parse(body.data) : body.data as T;
 }
 
+async function apiDownload(path: string): Promise<{ blob: Blob; filename: string }> {
+  const send = async (skipTokenCache = false) => {
+    const token = await getAccessToken(skipTokenCache);
+    const headers = new Headers({ Accept: "application/pdf" });
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    return fetch(`${API_URL}${path}`, { headers, credentials: "include" });
+  };
+  let response = await send();
+  if (response.status === 401) response = await send(true);
+  if (!response.ok) {
+    const rawBody: unknown = await response.json().catch(() => null);
+    const parsedError = errorEnvelopeSchema.safeParse(rawBody);
+    if (parsedError.success) {
+      const body = parsedError.data;
+      throw new ApiError(body.detail ?? body.message ?? "Invoice download failed", response.status, body.code, body.requestId, body.errors);
+    }
+    throw new ApiError("Invoice download failed", response.status || 502, "INVALID_RESPONSE");
+  }
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] ?? "invoice.pdf";
+  return { blob: await response.blob(), filename };
+}
+
+export function saveApiFile(file: { blob: Blob; filename: string }): void {
+  const url = URL.createObjectURL(file.blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = file.filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export const api = {
   get: <T>(path: string, init?: RequestInit) => apiFetch<T>(path, init),
   post: <T>(path: string, data?: unknown) => apiFetch<T>(path, { method: "POST", body: data === undefined ? undefined : JSON.stringify(data) }),
@@ -78,4 +112,5 @@ export const api = {
   patch: <T>(path: string, data: unknown) => apiFetch<T>(path, { method: "PATCH", body: JSON.stringify(data) }),
   uploadPart: (path: string, data: Blob) => apiFetch<{ ETag: string }>(path, { method: "PUT", headers: { "Content-Type": "application/octet-stream" }, body: data }),
   delete: <T>(path: string) => apiFetch<T>(path, { method: "DELETE" }),
+  download: apiDownload,
 };

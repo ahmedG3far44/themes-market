@@ -36,7 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // oxlint-disable-next-line react/set-state-in-effect
     void refreshUser();
     const refreshOnFocus = () => { void refreshUser(); };
-    window.addEventListener("focus", refreshOnFocus);
+    // window.addEventListener("focus", refreshOnFocus);
     return () => window.removeEventListener("focus", refreshOnFocus);
   }, [isLoaded, isSignedIn, refreshUser]);
 

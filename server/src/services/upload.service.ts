@@ -7,7 +7,7 @@ import { getR2Client } from "../config/r2.ts";
 import UploadAssetModel from "../models/upload-asset.ts";
 import { AppError } from "../utils/app-error.ts";
 
-const types = { image: new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]), video: new Set(["video/mp4", "video/webm"]), theme_zip: new Set(["application/zip", "application/x-zip", "application/x-zip-compressed", "application/octet-stream"]) };
+const types = { image: new Set(["image/jpeg", "image/png", "image/webp", "image/avif", "image/gif"]), video: new Set(["video/mp4", "video/webm"]), theme_zip: new Set(["application/zip", "application/x-zip", "application/x-zip-compressed", "application/octet-stream"]) };
 function maximumBytes(kind: keyof typeof types): number { return (kind === "image" ? env.MAX_IMAGE_SIZE_MB : kind === "video" ? env.MAX_VIDEO_SIZE_MB : env.MAX_THEME_ZIP_SIZE_MB) * 1024 * 1024; }
 function safeName(value: string): string { return value.normalize("NFKD").toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(-120) || "upload"; }
 async function mediaUrl(bucket: string, key: string): Promise<string> {
@@ -55,7 +55,15 @@ async function processImage(assetId: string): Promise<void> {
   try {
     await UploadAssetModel.updateOne({ _id: asset._id }, { status: "processing" });
     const original = await getR2Client().send(new GetObjectCommand({ Bucket: asset.bucket, Key: asset.key }));
-    const image = sharp(await streamToBuffer(original.Body), { failOn: "error" }).rotate();
+    const buffer = await streamToBuffer(original.Body);
+    // Keep the original GIF so the thumbnail retains all animation frames.
+    if (asset.contentType === "image/gif") {
+      const metadata = await sharp(buffer, { animated: true, failOn: "error" }).metadata();
+      if (metadata.format !== "gif") throw new Error("The uploaded file is not a GIF");
+      await UploadAssetModel.updateOne({ _id: asset._id }, { status: "ready", variants: [], $unset: { errorCode: 1, uploadId: 1 } });
+      return;
+    }
+    const image = sharp(buffer, { failOn: "error" }).rotate();
     const variants: Array<{ format: string; key: string; width?: number; height?: number; sizeBytes: number }> = [];
     for (const width of [640, 1280]) {
       const output = await image.clone().resize({ width, withoutEnlargement: true }).webp({ quality: 84 }).toBuffer({ resolveWithObject: true });
@@ -83,6 +91,7 @@ export async function completeUpload(assetId: string, userId: unknown, parts: Ar
   else await UploadAssetModel.updateOne({ _id: asset._id }, { status: "ready", $unset: { uploadId: 1 } });
   const ready = await UploadAssetModel.findById(asset._id).select("+bucket +key +variants.key");
   if (!ready) throw new AppError(404, "UPLOAD_NOT_FOUND", "Upload not found");
+  if (ready.status !== "ready") throw new AppError(422, "UPLOAD_PROCESSING_FAILED", "The image could not be processed. Choose a valid image and retry");
   return serializeAsset(ready);
 }
 

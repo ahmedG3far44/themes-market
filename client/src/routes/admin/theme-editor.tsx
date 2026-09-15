@@ -2,13 +2,16 @@
 /* oxlint-disable react-hooks/exhaustive-deps */
 import type { PublicAsset, ThemeType } from "@shared/types";
 import { ArrowLeft, CheckCircle2, FileArchive, Film, ImagePlus, Save, UploadCloud } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ErrorMessage } from "../../components/ui/error-message";
 import { Spinner } from "../../components/ui/spinner";
 import { useToast } from "../../context/toast-store";
 import { useAsync } from "../../hooks/use-async";
 import { api, ApiError } from "../../lib/api";
+import { RichTextEditor } from "../../components/ui/rich-text-editor";
+import { ThemeMedia } from "../../components/theme-media";
+import { instructionHtml } from "../../lib/instructions";
 
 const blank = {
   name: "", slug: "", shortDescription: "", description: "", stack: "React, TypeScript",
@@ -19,7 +22,8 @@ const blank = {
 
 type Fields = typeof blank;
 type UploadKind = "image" | "video" | "theme_zip";
-type ErrorKey = keyof Fields | "previewAssets" | "sourceAsset";
+type ErrorKey = keyof Fields | "previewAssets" | "galleryAssets" | "tutorialAssets" | "sourceAsset";
+type UploadRole = "preview" | "gallery" | "tutorial" | "source";
 type FormErrors = Partial<Record<ErrorKey, string>>;
 type UploadState = { kind: UploadKind; label: string; progress: number; phase: string };
 
@@ -37,10 +41,11 @@ function FieldError({ name, errors }: { name: ErrorKey; errors: FormErrors }) {
   return errors[name] ? <small className="field-error" id={`${name}-error`}>{errors[name]}</small> : null;
 }
 
-function validateFile(file: File, kind: UploadKind): string | undefined {
+function validateFile(file: File, kind: UploadKind, role: UploadRole): string | undefined {
   const rule = uploadRules[kind];
+  if (role === "preview" && !["video/mp4", "video/webm", "image/gif"].includes(file.type)) return "Choose one MP4, WebM, or GIF preview";
   const isZip = kind === "theme_zip" && file.name.toLowerCase().endsWith(".zip");
-  if (!rule.types.includes(file.type) && !isZip) return `Choose a supported ${kind === "theme_zip" ? "ZIP" : kind} file`;
+  if (!rule.types.includes(file.type) && !(role === "preview" && file.type === "image/gif") && !isZip) return `Choose a supported ${kind === "theme_zip" ? "ZIP" : kind} file`;
   if (file.size <= 0) return "The selected file is empty";
   if (file.size > rule.maxBytes) return `The file exceeds the ${Math.round(rule.maxBytes / 1024 / 1024)} MB limit`;
   return undefined;
@@ -79,7 +84,7 @@ async function uploadAsset(file: File, kind: UploadKind, update: (progress: numb
   }
 }
 
-function validateTheme(fields: Fields, images: PublicAsset[], videos: PublicAsset[], source?: PublicAsset): FormErrors {
+function validateTheme(fields: Fields, images: PublicAsset[], videos: PublicAsset[], source?: PublicAsset, preview?: PublicAsset): FormErrors {
   const errors: FormErrors = {};
   const name = fields.name.trim();
   const slug = fields.slug.trim();
@@ -122,7 +127,9 @@ function validateTheme(fields: Fields, images: PublicAsset[], videos: PublicAsse
   if (fields.setupInstructions.length > 20_000) errors.setupInstructions = "Setup instructions cannot exceed 20,000 characters";
   if (fields.deployInstructions.length > 20_000) errors.deployInstructions = "Deployment instructions cannot exceed 20,000 characters";
   if (fields.changelog.length > 20_000) errors.changelog = "Changelog cannot exceed 20,000 characters";
-  if (![...images, ...videos].some((asset) => asset.status === "ready")) errors.previewAssets = "Upload at least one preview image or video";
+  if (!preview || preview.status !== "ready") errors.previewAssets = "Upload one MP4, WebM, or GIF preview";
+  if (images.length < 2 || images.length > 10 || images.some((asset) => asset.status !== "ready")) errors.galleryAssets = "Upload 2–10 theme images";
+  if (videos.length < 1 || videos.length > 2 || videos.some((asset) => asset.status !== "ready")) errors.tutorialAssets = "Upload 1–2 tutorial videos";
   if (!source || source.status !== "ready") errors.sourceAsset = "Upload the required source ZIP file";
   return errors;
 }
@@ -130,13 +137,13 @@ function validateTheme(fields: Fields, images: PublicAsset[], videos: PublicAsse
 function mapServerErrors(error: unknown): FormErrors {
   const errors: FormErrors = {};
   if (!(error instanceof ApiError)) return errors;
-  const fieldMap: Record<string, ErrorKey> = { priceMinor: "price", imageAssetIds: "previewAssets", videoAssetIds: "previewAssets", previewAssets: "previewAssets", sourceAssetId: "sourceAsset" };
+  const fieldMap: Record<string, ErrorKey> = { priceMinor: "price", imageAssetIds: "galleryAssets", videoAssetIds: "tutorialAssets", previewAssetId: "previewAssets", previewAssets: "previewAssets", sourceAssetId: "sourceAsset" };
   for (const issue of error.validationErrors ?? []) {
     if (!issue || typeof issue !== "object") continue;
     const candidate = issue as { path?: unknown[]; message?: string };
     const rawName = String(candidate.path?.[0] ?? "");
     const name = fieldMap[rawName] ?? rawName as ErrorKey;
-    if (name in blank || name === "previewAssets" || name === "sourceAsset") errors[name] = candidate.message ?? "Check this field";
+    if (name in blank || ["previewAssets", "galleryAssets", "tutorialAssets", "sourceAsset"].includes(name)) errors[name] = candidate.message ?? "Check this field";
   }
   if (error.code === "THEME_PREVIEW_REQUIRED") errors.previewAssets = error.message;
   if (error.code === "THEME_SOURCE_REQUIRED") errors.sourceAsset = error.message;
@@ -156,53 +163,68 @@ export default function AdminThemeEditorPage() {
   const [fields, setFields] = useState<Fields>(blank);
   const [images, setImages] = useState<PublicAsset[]>([]);
   const [videos, setVideos] = useState<PublicAsset[]>([]);
+  const [preview, setPreview] = useState<PublicAsset | undefined>();
   const [source, setSource] = useState<PublicAsset | undefined>();
   const [uploading, setUploading] = useState<UploadState | null>(null);
   const [errors, setErrors] = useState<FormErrors>({});
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const previewInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const sourceInputRef = useRef<HTMLInputElement>(null);
-  const previewReady = useMemo(() => [...images, ...videos].some((asset) => asset.status === "ready"), [images, videos]);
+  const uploadLock = useRef(false);
+  const previewReady = preview?.status === "ready";
+  const galleryReady = images.length >= 2 && images.length <= 10 && images.every((asset) => asset.status === "ready");
+  const tutorialsReady = videos.length >= 1 && videos.length <= 2 && videos.every((asset) => asset.status === "ready");
+  const completedRequirements = Number(previewReady) + Number(galleryReady) + Number(tutorialsReady) + Number(source?.status === "ready");
 
   useEffect(() => {
     if (!id) return;
     void request.run(api.get<ThemeType>(`/admin/themes/${id}`)).then((theme) => {
-      setFields({ name: theme.name, slug: theme.slug, shortDescription: theme.shortDescription, description: theme.description, stack: theme.stack.join(", "), features: theme.features.join("\n"), price: String(theme.priceMinor / 100), currency: theme.currency, version: theme.version, previewUrl: theme.previewUrl, changelog: theme.changelog ?? "", setupInstructions: theme.setupInstructions ?? "", deployInstructions: theme.deployInstructions ?? "", featured: theme.featured, seoTitle: theme.seoTitle ?? "", seoDescription: theme.seoDescription ?? "" });
-      setImages(theme.images); setVideos(theme.videos); setSource(theme.sourceAsset);
+      setFields({ name: theme.name, slug: theme.slug, shortDescription: theme.shortDescription, description: theme.description, stack: theme.stack.join(", "), features: theme.features.join("\n"), price: String(theme.priceMinor / 100), currency: theme.currency, version: theme.version, previewUrl: theme.previewUrl, changelog: theme.changelog ?? "", setupInstructions: instructionHtml(theme.setupInstructions ?? "", theme.instructionsFormat), deployInstructions: instructionHtml(theme.deployInstructions ?? "", theme.instructionsFormat), featured: theme.featured, seoTitle: theme.seoTitle ?? "", seoDescription: theme.seoDescription ?? "" });
+      setImages(theme.images); setVideos(theme.videos); setSource(theme.sourceAsset); setPreview(theme.previewAsset);
     }).catch(() => undefined);
   }, [id, request.run]);
 
   const clearError = (name: ErrorKey) => setErrors((current) => { const next = { ...current }; delete next[name]; return next; });
   const field = (name: keyof Fields, value: string | boolean) => { setFields((current) => ({ ...current, [name]: value })); clearError(name); };
 
-  const selectFile = async (file: File | undefined, kind: UploadKind) => {
-    if (!file || uploading) return;
-    const errorKey: ErrorKey = kind === "theme_zip" ? "sourceAsset" : "previewAssets";
-    const fileError = validateFile(file, kind);
+  const selectFiles = async (files: File[], role: UploadRole) => {
+    if (!files.length || uploadLock.current || save.isLoading) return;
+    const errorKey: ErrorKey = role === "source" ? "sourceAsset" : role === "gallery" ? "galleryAssets" : role === "tutorial" ? "tutorialAssets" : "previewAssets";
+    const kindFor = (file: File): UploadKind => role === "source" ? "theme_zip" : role === "gallery" || file.type === "image/gif" ? "image" : "video";
+    const max = role === "gallery" ? 10 - images.length : role === "tutorial" ? 2 - videos.length : 1;
+    const fileError = files.length > max ? `Choose no more than ${Math.max(0, max)} additional ${role} file(s)` : files.map((file) => validateFile(file, kindFor(file), role)).find(Boolean);
     if (fileError) { setErrors((current) => ({ ...current, [errorKey]: fileError })); return; }
     clearError(errorKey);
-    setUploading({ kind, label: file.name, progress: 0, phase: "Starting" });
+    uploadLock.current = true;
     try {
-      const asset = await uploadAsset(file, kind, (progress, phase) => setUploading({ kind, label: file.name, progress, phase }));
-      if (kind === "image") setImages((items) => [...items, asset]);
-      else if (kind === "video") setVideos((items) => [...items, asset]);
-      else setSource(asset);
-      notify(`${file.name} uploaded`);
+      for (const file of files) {
+        const kind = kindFor(file);
+        setUploading({ kind, label: file.name, progress: 0, phase: "Starting" });
+        const asset = await uploadAsset(file, kind, (progress, phase) => setUploading({ kind, label: file.name, progress, phase }));
+        if (asset.status !== "ready") throw new Error(`${file.name} could not be processed. Please retry`);
+        if (role === "preview") setPreview(asset);
+        else if (role === "gallery") setImages((items) => [...items, asset]);
+        else if (role === "tutorial") setVideos((items) => [...items, asset]);
+        else setSource(asset);
+        notify(`${file.name} uploaded`);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Upload failed";
       setErrors((current) => ({ ...current, [errorKey]: message }));
       notify(message, "error");
-    } finally { setUploading(null); }
+    } finally { uploadLock.current = false; setUploading(null); }
   };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    const validationErrors = validateTheme(fields, images, videos, source);
+    if (uploadLock.current || save.isLoading) return;
+    const validationErrors = validateTheme(fields, images, videos, source, preview);
     setErrors(validationErrors);
     const firstError = Object.keys(validationErrors)[0] as ErrorKey | undefined;
-    if (firstError) { requestAnimationFrame(() => document.querySelector<HTMLElement>(`[aria-describedby="${firstError}-error"]`)?.focus()); return; }
+    if (firstError) { requestAnimationFrame(() => document.querySelector<HTMLElement>(`[aria-describedby~="${firstError}-error"]`)?.focus()); return; }
 
-    const body = { ...fields, stack: fields.stack.split(",").map((value) => value.trim()).filter(Boolean), features: fields.features.split("\n").map((value) => value.trim()).filter(Boolean), priceMinor: Math.round(Number(fields.price) * 100), imageAssetIds: images.map((asset) => asset.id), videoAssetIds: videos.map((asset) => asset.id), sourceAssetId: source!.id, changelog: fields.changelog || undefined, setupInstructions: fields.setupInstructions || undefined, deployInstructions: fields.deployInstructions || undefined, seoTitle: fields.seoTitle || undefined, seoDescription: fields.seoDescription || undefined };
+    const body = { ...fields, stack: fields.stack.split(",").map((value) => value.trim()).filter(Boolean), features: fields.features.split("\n").map((value) => value.trim()).filter(Boolean), priceMinor: Math.round(Number(fields.price) * 100), previewAssetId: preview!.id, imageAssetIds: images.map((asset) => asset.id), videoAssetIds: videos.map((asset) => asset.id), sourceAssetId: source!.id, instructionsFormat: "html", changelog: fields.changelog, setupInstructions: fields.setupInstructions, deployInstructions: fields.deployInstructions, seoTitle: fields.seoTitle, seoDescription: fields.seoDescription };
     try {
       const theme = await save.run(id ? api.put<ThemeType>(`/admin/themes/${id}`, body) : api.post<ThemeType>("/admin/themes", body));
       notify(id ? "Theme updated" : "Draft theme created");
@@ -218,7 +240,7 @@ export default function AdminThemeEditorPage() {
 
   return <main className="admin-page">
     <Link className="back-link" to="/admin/themes"><ArrowLeft size={16} />Theme library</Link>
-    <div className="editor-heading"><div><span className="eyebrow">Catalog editor</span><h1>{id ? "Edit theme" : "Create a theme"}</h1><p>Add a preview image or video and the private source ZIP before saving the theme.</p></div></div>
+    <div className="editor-heading"><div><span className="eyebrow">Catalog editor</span><h1>{id ? "Edit theme" : "Create a theme"}</h1><p>Add one animated preview, 2–10 theme images, 1–2 tutorial videos, and the private source ZIP.</p></div></div>
     {(request.error || save.error) && <ErrorMessage message={(request.error || save.error)!} onDismiss={() => { request.clearError(); save.clearError(); }} />}
     <form className="theme-editor" onSubmit={submit} noValidate>
       <section className="editor-main">
@@ -239,31 +261,38 @@ export default function AdminThemeEditorPage() {
         </div></div>
 
         <div className="editor-section"><h2>Documentation</h2><div className="form-grid">
-          <label className="full">Setup instructions<textarea {...fieldErrorProps("setupInstructions", errors)} rows={6} value={fields.setupInstructions} onChange={(event) => field("setupInstructions", event.target.value)} /><FieldError name="setupInstructions" errors={errors} /></label>
-          <label className="full">Deployment instructions<textarea {...fieldErrorProps("deployInstructions", errors)} rows={5} value={fields.deployInstructions} onChange={(event) => field("deployInstructions", event.target.value)} /><FieldError name="deployInstructions" errors={errors} /></label>
+          <RichTextEditor id="setupInstructions" label="Setup instructions" value={fields.setupInstructions} onChange={(value) => field("setupInstructions", value)} error={errors.setupInstructions} disabled={save.isLoading} />
+          <RichTextEditor id="deployInstructions" label="Deployment instructions" value={fields.deployInstructions} onChange={(value) => field("deployInstructions", value)} error={errors.deployInstructions} disabled={save.isLoading} />
           <label className="full">Changelog<textarea {...fieldErrorProps("changelog", errors)} rows={4} value={fields.changelog} onChange={(event) => field("changelog", event.target.value)} /><FieldError name="changelog" errors={errors} /></label>
         </div></div>
       </section>
 
       <aside className="editor-side">
         <div className="editor-section asset-section">
-          <div className="asset-section-heading"><div><h2>Theme assets</h2><p>Both requirements must be complete.</p></div><span className={previewReady && source?.status === "ready" ? "complete" : ""}>{Number(previewReady) + Number(source?.status === "ready")} / 2</span></div>
-          <div className={`asset-requirement ${previewReady ? "met" : ""}`}><CheckCircle2 size={16} /><span>Preview image or video</span><b>Required</b></div>
-          <button type="button" disabled={busy} className={`upload-drop ${errors.previewAssets ? "invalid" : ""}`} {...fieldErrorProps("previewAssets", errors)} onClick={() => imageInputRef.current?.click()}><ImagePlus size={24} /><strong>Add preview image</strong><span>{uploadRules.image.description}</span></button>
-          <input ref={imageInputRef} className="asset-file-input" disabled={busy} type="file" accept="image/jpeg,image/png,image/webp,image/avif" onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; void selectFile(file, "image"); }} />
-          {uploading?.kind === "image" && <UploadProgress upload={uploading} />}
-          {images.map((asset) => <div className="asset-row" key={asset.id}><span>{asset.url ? <img src={asset.url} alt="" /> : <ImagePlus />}</span><div><strong>{asset.originalName}</strong><small>{asset.status}</small></div><button type="button" disabled={busy} onClick={() => { const next = images.filter((item) => item.id !== asset.id); setImages(next); if (!next.some((item) => item.status === "ready") && !videos.some((item) => item.status === "ready")) setErrors((current) => ({ ...current, previewAssets: "Upload at least one preview image or video" })); }}>Remove</button></div>)}
-          <button type="button" disabled={busy} className={`upload-drop source ${errors.previewAssets ? "invalid" : ""}`} {...fieldErrorProps("previewAssets", errors)} onClick={() => videoInputRef.current?.click()}><Film size={24} /><strong>Add preview video</strong><span>{uploadRules.video.description}</span></button>
-          <input ref={videoInputRef} className="asset-file-input" disabled={busy} type="file" accept="video/mp4,video/webm" onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; void selectFile(file, "video"); }} />
-          {uploading?.kind === "video" && <UploadProgress upload={uploading} />}
-          {videos.map((asset) => <div className="asset-row" key={asset.id}><span>{asset.url ? <video src={asset.url} muted /> : <Film />}</span><div><strong>{asset.originalName}</strong><small>{asset.status}</small></div><button type="button" disabled={busy} onClick={() => { const next = videos.filter((item) => item.id !== asset.id); setVideos(next); if (!next.some((item) => item.status === "ready") && !images.some((item) => item.status === "ready")) setErrors((current) => ({ ...current, previewAssets: "Upload at least one preview image or video" })); }}>Remove</button></div>)}
+          <div className="asset-section-heading"><div><h2>Theme assets</h2><p>Complete all four requirements.</p></div><span className={completedRequirements === 4 ? "complete" : ""}>{completedRequirements} / 4</span></div>
+          {uploading && <UploadProgress upload={uploading} />}
+          <div className={`asset-requirement ${previewReady ? "met" : ""}`}><CheckCircle2 size={16} /><span>Card preview</span><b>{preview ? 1 : 0} / 1</b></div>
+          <button type="button" disabled={busy} className={`upload-drop ${errors.previewAssets ? "invalid" : ""}`} {...fieldErrorProps("previewAssets", errors)} onClick={() => previewInputRef.current?.click()}><Film size={18} /><strong className="text-xs">{preview ? "Replace preview" : "Upload preview"}</strong><span className="text-xs">MP4 or WebM up to 250 MB · GIF up to 10 MB</span></button>
+          <input ref={previewInputRef} className="asset-file-input" disabled={busy} type="file" accept="video/mp4,video/webm,image/gif" onChange={(event) => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void selectFiles(files, "preview"); }} />
+          {preview && <div className="asset-row"><span><ThemeMedia asset={preview} alt="Card preview" preview /></span><div><strong className="text-xs">{preview.originalName}</strong><small>Card thumbnail · {preview.status}</small></div><button type="button" disabled={busy} onClick={() => setPreview(undefined)}>Remove</button></div>}
           <FieldError name="previewAssets" errors={errors} />
 
+          <div className={`asset-requirement source-requirement ${galleryReady ? "met" : ""}`}><CheckCircle2 size={16} /><span>Theme images</span><b>{images.length} / 10</b></div>
+          <button type="button" disabled={busy || images.length >= 10} className={`upload-drop ${errors.galleryAssets ? "invalid" : ""}`} {...fieldErrorProps("galleryAssets", errors)} onClick={() => imageInputRef.current?.click()}><ImagePlus size={18} /><strong className="text-xs">Add gallery images · minimum 2</strong><span className="text-xs">{uploadRules.image.description} each</span></button>
+          <input ref={imageInputRef} className="asset-file-input" disabled={busy} type="file" multiple accept="image/jpeg,image/png,image/webp,image/avif" onChange={(event) => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void selectFiles(files, "gallery"); }} />
+          {images.map((asset, index) => <div className="asset-row" key={asset.id}><span><ThemeMedia asset={asset} alt={`Gallery image ${index + 1}`} /></span><div><strong className="text-xs">{asset.originalName}</strong><small>Image {index + 1} · {asset.status}</small></div><button type="button" disabled={busy} aria-label={`Remove gallery image ${index + 1}`} onClick={() => { setImages((items) => items.filter((item) => item.id !== asset.id)); clearError("galleryAssets"); }}>Remove</button></div>)}
+          <FieldError name="galleryAssets" errors={errors} />
+
+          <div className={`asset-requirement source-requirement ${tutorialsReady ? "met" : ""}`}><CheckCircle2 size={16} /><span>Tutorial videos</span><b>{videos.length} / 2</b></div>
+          <button type="button" disabled={busy || videos.length >= 2} className={`upload-drop source ${errors.tutorialAssets ? "invalid" : ""}`} {...fieldErrorProps("tutorialAssets", errors)} onClick={() => videoInputRef.current?.click()}><Film size={18} /><strong className="text-xs">Add tutorials · minimum 1</strong><span className="text-xs">Setup, deployment, or editing · {uploadRules.video.description}</span></button>
+          <input ref={videoInputRef} className="asset-file-input" disabled={busy} type="file" multiple accept="video/mp4,video/webm" onChange={(event) => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void selectFiles(files, "tutorial"); }} />
+          {videos.map((asset, index) => <div className="asset-row" key={asset.id}><span><Film size={18} /></span><div><strong className="text-xs">{asset.originalName}</strong><small>Tutorial {index + 1} · {asset.status}</small></div><button type="button" disabled={busy} aria-label={`Remove tutorial ${index + 1}`} onClick={() => { setVideos((items) => items.filter((item) => item.id !== asset.id)); clearError("tutorialAssets"); }}>Remove</button></div>)}
+          <FieldError name="tutorialAssets" errors={errors} />
+
           <div className={`asset-requirement source-requirement ${source?.status === "ready" ? "met" : ""}`}><CheckCircle2 size={16} /><span>Theme source package</span><b>Required</b></div>
-          <button type="button" disabled={busy} className={`upload-drop source ${errors.sourceAsset ? "invalid" : ""}`} {...fieldErrorProps("sourceAsset", errors)} onClick={() => sourceInputRef.current?.click()}><FileArchive size={24} /><strong>{source ? "Replace source ZIP" : "Upload source ZIP"}</strong><span>{source?.originalName ?? uploadRules.theme_zip.description}</span></button>
-          <input ref={sourceInputRef} className="asset-file-input" disabled={busy} type="file" accept=".zip,application/zip,application/x-zip,application/x-zip-compressed" onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; void selectFile(file, "theme_zip"); }} />
-          {uploading?.kind === "theme_zip" && <UploadProgress upload={uploading} />}
-          {source && <div className="asset-row source-file"><span><FileArchive /></span><div><strong>{source.originalName}</strong><small>{source.status}</small></div><button type="button" disabled={busy} onClick={() => { setSource(undefined); setErrors((current) => ({ ...current, sourceAsset: "Upload the required source ZIP file" })); }}>Remove</button></div>}
+          <button type="button" disabled={busy} className={`upload-drop source ${errors.sourceAsset ? "invalid" : ""}`} {...fieldErrorProps("sourceAsset", errors)} onClick={() => sourceInputRef.current?.click()}><FileArchive size={18} /><strong className="text-xs">{source ? "Replace source ZIP" : "Upload source ZIP"}</strong><span className="text-xs">{source?.originalName ?? uploadRules.theme_zip.description}</span></button>
+          <input ref={sourceInputRef} className="asset-file-input" disabled={busy} type="file" accept=".zip,application/zip,application/x-zip,application/x-zip-compressed" onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; void selectFiles(file ? [file] : [], "source"); }} />
+          {source && <div className="asset-row source-file"><span><FileArchive /></span><div><strong className="text-xs">{source.originalName}</strong><small>{source.status}</small></div><button type="button" disabled={busy} onClick={() => { setSource(undefined); setErrors((current) => ({ ...current, sourceAsset: "Upload the required source ZIP file" })); }}>Remove</button></div>}
           <FieldError name="sourceAsset" errors={errors} />
         </div>
 

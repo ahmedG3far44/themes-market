@@ -21,10 +21,72 @@ export default function TransactionsPage() {
     void run(api.get<TransactionPage>(`/admin/transactions?${query}`)).catch(() => undefined);
   }, [filters, run]);
   const submit = (event: FormEvent) => { event.preventDefault(); setFilters((current) => ({ ...current, search, page: 1 })); };
-  return <main className="admin-page"><PageHeader eyebrow="Payments" title="Transactions" description="Review payment outcomes and trace every purchase back to a customer and plan." />
+  return <main className="admin-page">
+
+    <PageHeader eyebrow="Payments" title="Transactions" description="Review payment outcomes and trace every purchase back to a customer and plan." />
+
     {error && <ErrorMessage message={error} onDismiss={clearError} />}
-    <section className="panel data-panel"><div className="filters-row"><form className="search-box" onSubmit={submit}><Search size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search user or email" /><button>Search</button></form><div className="filter-group"><select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value, page: 1 }))}><option value="">All statuses</option>{(["pending", "success", "declined"] as TransactionStatus[]).map((status) => <option key={status}>{status}</option>)}</select><label className="date-filter"><CalendarDays size={16} /><input type="date" value={filters.from} onChange={(event) => setFilters((current) => ({ ...current, from: event.target.value, page: 1 }))} aria-label="From date" /></label><label className="date-filter"><span>to</span><input type="date" value={filters.to} onChange={(event) => setFilters((current) => ({ ...current, to: event.target.value, page: 1 }))} aria-label="To date" /></label></div></div>
-      {isLoading && !data ? <TableSkeleton columns={6} /> : !data?.items.length ? <div className="empty-state">No transactions match these filters.</div> : <div className="table-scroll"><table><thead><tr><th>Customer</th><th>Plan / product</th><th>Provider</th><th>Amount</th><th>Status</th><th>Date & time</th></tr></thead><tbody>{data.items.map((transaction) => <tr key={transaction.id}><td><div className="user-cell"><span className="avatar-fallback">{transaction.userId?.name?.slice(0, 1) ?? "?"}</span><div><strong>{transaction.userId?.name ?? "Deleted user"}</strong><small>{transaction.userId?.email ?? "—"}</small></div></div></td><td><strong>{transaction.planId?.name ?? transaction.product?.name ?? "Custom purchase"}</strong></td><td><span className="provider-label">{transaction.provider}</span></td><td><strong>{money(transaction.amountMinor ?? Math.round(transaction.amount * 100), transaction.currency)}</strong><small className="currency-code">{transaction.currency}</small></td><td><span className={`transaction-status ${transaction.status}`}>{transaction.status}</span></td><td><span className="date-cell">{new Date(transaction.createdAt).toLocaleDateString()}<small>{new Date(transaction.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</small></span></td></tr>)}</tbody></table></div>}
+
+    <section className="panel data-panel">
+      <div className="filters-row">
+        <form className="search-box" onSubmit={submit}>
+          <Search size={18} />
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search user or email" />
+          <button>Search</button>
+        </form>
+        <div className="filter-group">
+          <select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value, page: 1 }))}>
+            <option value="">All statuses</option>{(["pending", "success", "declined"] as TransactionStatus[]).map((status) => <option key={status}>{status}</option>)}
+          </select>
+          <label className="date-filter">
+            <CalendarDays size={16} />
+            <input type="date" value={filters.from} onChange={(event) => setFilters((current) => ({ ...current, from: event.target.value, page: 1 }))} aria-label="From date" />
+          </label>
+          <label className="date-filter">
+            <span>to</span>
+            <input type="date" value={filters.to} onChange={(event) => setFilters((current) => ({ ...current, to: event.target.value, page: 1 }))} aria-label="To date" />
+          </label>
+        </div>
+      </div>
+      {isLoading && !data ? <TableSkeleton columns={6} /> : !data?.items.length ? <div className="empty-state">No transactions match these filters.</div> : <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Customer</th>
+              <th>Plan / product</th>
+              <th>Provider</th>
+              <th>Amount</th>
+              <th>Status</th>
+              <th>Date & time</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.items.map((transaction) =>
+              <tr key={transaction.id}>
+                <td>
+                  <div className="user-cell">
+                    <span className="avatar-fallback">{transaction.userId?.name?.slice(0, 1) ?? "?"}</span>
+                    <div>
+                      <strong>{transaction.userId?.name ?? "Deleted user"}</strong>
+                      <small>{transaction.userId?.email ?? "—"}</small>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <strong>{transaction.planId?.name ?? transaction.product?.name ?? "Custom purchase"}</strong>
+                </td>
+                <td>
+                  {transaction.provider === "stripe" ? <img width={40} height={40} src="/stripe.png" alt="Stripe" /> : <span>{transaction.provider}</span>}
+                </td>
+                <td>
+                  <strong>{money(transaction.amountMinor ?? Math.round(transaction.amount * 100))}</strong>
+                  <small className="currency-code mx-1">{transaction.currency}</small></td><td>
+                  <span className={`transaction-status ${transaction.status}`}>{transaction.status}</span></td><td>
+                  <span className="date-cell">{new Date(transaction.createdAt).toLocaleDateString()}<small>{new Date(transaction.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</small></span></td></tr>)}
+          </tbody>
+        </table>
+      </div>}
       {data && <div className="pagination"><span>{data.total} transactions</span><div><button disabled={filters.page <= 1 || isLoading} onClick={() => setFilters((current) => ({ ...current, page: current.page - 1 }))}>Previous</button><span>Page {data.page} of {data.pages}</span><button disabled={filters.page >= data.pages || isLoading} onClick={() => setFilters((current) => ({ ...current, page: current.page + 1 }))}>Next</button></div></div>}
-    </section></main>;
+    </section>
+  </main>;
 }

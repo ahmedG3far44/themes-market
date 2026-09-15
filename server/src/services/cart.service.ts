@@ -4,6 +4,7 @@ import EntitlementModel from "../models/entitlement.ts";
 import ThemeModel from "../models/theme.ts";
 import UploadAssetModel from "../models/upload-asset.ts";
 import { AppError } from "../utils/app-error.ts";
+import { serializeAsset } from "./upload.service.ts";
 
 export async function validDiscount(code?: string) {
   if (!code) return null;
@@ -16,14 +17,20 @@ export async function validDiscount(code?: string) {
 export async function getCart(userId: unknown) {
   const cart = await CartModel.findOne({ userId }).lean();
   type RawCartItem = { themeId: unknown; addedAt: Date };
-  type CartViewItem = { themeId: string; name: string; slug: string; priceMinor: number; currency: string; addedAt: Date };
+  type CartViewItem = { themeId: string; name: string; slug: string; priceMinor: number; currency: string; addedAt: Date; previewAsset?: Awaited<ReturnType<typeof serializeAsset>> };
   const cartItems = (cart?.items ?? []) as RawCartItem[];
   const ids = cartItems.map((item: RawCartItem) => item.themeId);
   const themes = await ThemeModel.find({ _id: { $in: ids }, status: "published" }).lean();
   const byId = new Map(themes.map((theme) => [String(theme._id), theme]));
+  const previewIds = themes.map((theme) => theme.previewAssetId ?? theme.videoAssetIds[0] ?? theme.imageAssetIds[0]).filter(Boolean);
+  const previewAssets = await UploadAssetModel.find({ _id: { $in: previewIds }, status: "ready", kind: { $in: ["image", "video"] } }).select("+bucket +key +variants.key").lean();
+  const serializedPreviews = await Promise.all(previewAssets.map(async (asset) => [String(asset._id), await serializeAsset(asset)] as const));
+  const previewById = new Map(serializedPreviews);
   const items: CartViewItem[] = cartItems.flatMap((item: RawCartItem) => {
     const theme = byId.get(String(item.themeId));
-    return theme ? [{ themeId: String(theme._id), name: theme.name, slug: theme.slug, priceMinor: theme.priceMinor, currency: theme.currency, addedAt: item.addedAt }] : [];
+    if (!theme) return [];
+    const previewId = theme.previewAssetId ?? theme.videoAssetIds[0] ?? theme.imageAssetIds[0];
+    return [{ themeId: String(theme._id), name: theme.name, slug: theme.slug, priceMinor: theme.priceMinor, currency: theme.currency, addedAt: item.addedAt, previewAsset: previewId ? previewById.get(String(previewId)) : undefined }];
   });
   const currency = items[0]?.currency ?? "USD";
   if (items.some((item: CartViewItem) => item.currency !== currency)) throw new AppError(409, "MIXED_CURRENCY_CART", "Cart items must use one currency");

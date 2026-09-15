@@ -14,7 +14,9 @@ export interface ThemeDocument {
   changelog?: string;
   setupInstructions?: string;
   deployInstructions?: string;
+  instructionsFormat?: "plain" | "html";
   previewUrl: string;
+  previewAssetId?: Types.ObjectId;
   imageAssetIds: Types.ObjectId[];
   videoAssetIds: Types.ObjectId[];
   sourceAssetId?: Types.ObjectId;
@@ -42,7 +44,9 @@ const schema = new Schema<ThemeDocument>({
   changelog: String,
   setupInstructions: String,
   deployInstructions: String,
+  instructionsFormat: { type: String, enum: ["plain", "html"], default: "plain" },
   previewUrl: { type: String, required: true },
+  previewAssetId: { type: Schema.Types.ObjectId, ref: "UploadAsset" },
   imageAssetIds: [{ type: Schema.Types.ObjectId, ref: "UploadAsset" }],
   videoAssetIds: [{ type: Schema.Types.ObjectId, ref: "UploadAsset" }],
   sourceAssetId: { type: Schema.Types.ObjectId, ref: "UploadAsset" },

@@ -9,7 +9,7 @@ import { clerkMiddleware } from '@clerk/express'
 import { verifyRegion } from './middlewares/verifyRegion.ts';
 import { connectDatabase } from './config/database.ts';
 import { errorHandler, notFound, requestContext } from './middlewares/error.ts';
-import { paymobWebhookHandler, stripeWebhookHandler } from './routes/webhook.route.ts';
+import { stripeWebhookHandler } from './routes/webhook.route.ts';
 
 
 const app = express()
@@ -30,7 +30,6 @@ app.use(clerkMiddleware({
 app.post("/api/v1/webhooks/stripe", express.raw({ type: "application/json", limit: "256kb" }), stripeWebhookHandler);
 // app.post("/api/v1/webhooks/clerk", express.raw({ type: "application/json", limit: "256kb" }), clerkWebhookHandler);
 app.use(express.json({ limit: "1mb" }));
-app.post("/api/v1/webhooks/paymob", paymobWebhookHandler);
 
 app.get("/health/live", (_req, res) => { res.json({ status: "ok" }); });
 app.get("/health/ready", (_req, res) => {

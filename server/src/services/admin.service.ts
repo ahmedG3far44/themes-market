@@ -97,11 +97,11 @@ export async function listUsers(query: Record<string, unknown>) {
     UserModel.countDocuments(filter),
   ]);
   const orderStats = await OrderModel.aggregate<{ _id: { userId: unknown; currency: string }; totalOrders: number; totalSpentMinor: number }>([
-    { $match: { userId: { $in: items.map((item) => item._id) } } },
+    { $match: { userId: { $in: items.map((item) => item._id) }, status: "paid" } },
     { $group: {
       _id: { userId: "$userId", currency: "$currency" },
       totalOrders: { $sum: 1 },
-      totalSpentMinor: { $sum: { $cond: [{ $eq: ["$status", "paid"] }, "$totalMinor", 0] } },
+      totalSpentMinor: { $sum: "$totalMinor" },
     } },
   ]);
   const metricsByUser = new Map<string, { totalOrders: number; spentByCurrency: Array<{ currency: string; amountMinor: number }> }>();

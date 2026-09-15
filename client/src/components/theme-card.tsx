@@ -1,6 +1,8 @@
+import { themePreview } from "../lib/theme-media";
 import type { ThemeType } from "@shared/types";
 import { CheckCircle2, Download, ShoppingBag, ShoppingCart } from "lucide-react";
 import { Link } from "react-router-dom";
+import { ThemeMedia } from "./theme-media";
 import { money } from "../lib/format";
 
 interface ThemeCardProps {
@@ -12,7 +14,6 @@ interface ThemeCardProps {
 }
 
 export function ThemeCard({ theme, inCart = false, isAdmin = false, onAdd, adding = false }: ThemeCardProps) {
-  const image = theme.images[0]?.variants?.at(-1)?.url ?? theme.images[0]?.url;
 
   const purchaseAction = theme.purchased ? (
     <Link className="secondary-button" to="/purchases"><Download size={16} />Download</Link>
@@ -27,14 +28,28 @@ export function ThemeCard({ theme, inCart = false, isAdmin = false, onAdd, addin
   );
 
   return <article className="theme-card">
+
     <Link className="theme-card-visual" to={`/themes/${theme.slug}`} aria-label={`View ${theme.name}`}>
-      {image ? <img src={image} alt={`Preview of ${theme.name}`} loading="lazy" /> : <span>{theme.name.slice(0, 2).toUpperCase()}</span>}
+      <ThemeMedia asset={themePreview(theme)} alt={`Preview of ${theme.name}`} preview />
     </Link>
+
     <div className="theme-card-body">
-      <div className="theme-card-meta"><div>{theme.stack.slice(0, 3).map((item) => <span key={item}>{item}</span>)}</div>{theme.purchased && <span className="owned-label"><CheckCircle2 size={13} />Owned</span>}</div>
-      <h3><Link className="theme-card-title" to={`/themes/${theme.slug}`}>{theme.name}</Link></h3>
-      <p>{theme.shortDescription}</p>
-      <div className="theme-card-footer"><strong>{money(theme.priceMinor, theme.currency)}</strong>{purchaseAction}</div>
+      <div className="theme-card-meta">
+
+        <div>
+          {theme.stack.slice(0, 3).map((item) => <span key={item}>{item}</span>)}
+          <p className="text-xs my-2">{theme.shortDescription}</p>
+        </div>
+
+        {theme.purchased && <span className="owned-label"><CheckCircle2 size={13} />Owned</span>}
+      </div>
+
+      <h3> <Link className="theme-card-title" to={`/themes/${theme.slug}`}>{theme.name}</Link></h3>
+
+      <div className="theme-card-footer">
+        <strong>{money(theme.priceMinor, theme.currency)}</strong>
+        {purchaseAction}
+      </div>
     </div>
   </article>;
 }

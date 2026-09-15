@@ -1,6 +1,7 @@
+import env from "./config/env.ts";
+
 import { randomUUID } from "node:crypto";
 import { AbortMultipartUploadCommand, CreateMultipartUploadCommand, PutBucketCorsCommand } from "@aws-sdk/client-s3";
-import env from "./config/env.ts";
 import { getR2Client } from "./config/r2.ts";
 
 async function setupR2() {

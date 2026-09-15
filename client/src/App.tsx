@@ -6,12 +6,13 @@ import { UserButton } from '@clerk/react'
 import { useAppAuth } from './context/auth-store'
 import { AuthProvider } from './context/auth-context'
 import { AdminLayout } from './components/admin/admin-layout'
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { lazy, Suspense } from 'react'
 
 import { ToastProvider } from './context/toast-context'
 import { CartProvider } from './context/cart-context'
 import { Spinner } from './components/ui/spinner'
+import Footer from './components/footer'
 
 const InsightsPage = lazy(() => import('./routes/admin/insights'))
 const UsersPage = lazy(() => import('./routes/admin/users'))
@@ -21,8 +22,7 @@ const ThemeDetailPage = lazy(() => import('./routes/theme-detail'))
 const CartPage = lazy(() => import('./routes/cart'))
 const PurchasesPage = lazy(() => import('./routes/purchases'))
 const OrderDetailPage = lazy(() => import('./routes/order-detail'))
-const CheckoutSuccess = lazy(() => import('./routes/checkout-result').then((module) => ({ default: module.CheckoutSuccess })))
-const CheckoutCancel = lazy(() => import('./routes/checkout-result').then((module) => ({ default: module.CheckoutCancel })))
+const CheckoutCancel = lazy(() => import('./routes/checkout-cancel'))
 const SignInPage = lazy(() => import('./routes/auth').then((module) => ({ default: module.SignInPage })))
 const SignUpPage = lazy(() => import('./routes/auth').then((module) => ({ default: module.SignUpPage })))
 const AdminThemesPage = lazy(() => import('./routes/admin/themes'))
@@ -30,6 +30,18 @@ const AdminThemeEditorPage = lazy(() => import('./routes/admin/theme-editor'))
 const AdminOrdersPage = lazy(() => import('./routes/admin/orders'))
 const AdminOrderDetailPage = lazy(() => import('./routes/admin/order-detail'))
 const DiscountsPage = lazy(() => import('./routes/admin/discounts'))
+const PrivacyPage = lazy(() => import('./routes/privacy'))
+const TermsPage = lazy(() => import('./routes/terms'))
+const RefundPage = lazy(() => import('./routes/refund'))
+const AboutPage = lazy(() => import('./routes/about'))
+const ContactPage = lazy(() => import('./routes/contact'))
+const AdminContentPage = lazy(() => import('./routes/admin/content'))
+
+function SiteFooter() {
+  const location = useLocation()
+  if (location.pathname.startsWith('/admin') || location.pathname.startsWith('/sign-in') || location.pathname.startsWith('/sign-up')) return null
+  return <Footer />
+}
 
 
 function App() {
@@ -44,13 +56,17 @@ function App() {
             <Route path='/subscription' element={<Protected><UserDashboard /></Protected>} />
             <Route path='/themes' element={<ThemesPage />} />
             <Route path='/themes/:slug' element={<ThemeDetailPage />} />
+            <Route path='/about' element={<AboutPage />} />
+            <Route path='/contact' element={<ContactPage />} />
+            <Route path='/privacy' element={<PrivacyPage />} />
+            <Route path='/terms' element={<TermsPage />} />
+            <Route path='/refund' element={<RefundPage />} />
             <Route path='/sign-in/*' element={<SignInPage />} />
             <Route path='/sign-up/*' element={<SignUpPage />} />
             <Route path='/cart' element={<Protected><CartPage /></Protected>} />
             <Route path='/purchases' element={<Protected customerOnly><PurchasesPage /></Protected>} />
             <Route path='/purchase' element={<Protected customerOnly><PurchasesPage /></Protected>} />
             <Route path='/orders/:id' element={<Protected customerOnly><OrderDetailPage /></Protected>} />
-            <Route path='/checkout/success' element={<Protected><CheckoutSuccess /></Protected>} />
             <Route path='/checkout/cancel' element={<Protected><CheckoutCancel /></Protected>} />
             <Route path='/admin' element={<Protected adminOnly><AdminLayout /></Protected>}>
               <Route index element={<InsightsPage />} />
@@ -58,16 +74,18 @@ function App() {
               <Route path='transactions' element={<TransactionsPage />} />
               <Route path='themes' element={<AdminThemesPage />} />
               <Route path='themes/new' element={<AdminThemeEditorPage />} />
+              <Route path='theme/new' element={<AdminThemeEditorPage />} />
               <Route path='themes/:id/edit' element={<AdminThemeEditorPage />} />
+              <Route path='content' element={<AdminContentPage />} />
               <Route path='orders' element={<AdminOrdersPage />} />
               <Route path='orders/:id' element={<AdminOrderDetailPage />} />
               <Route path='discounts' element={<DiscountsPage />} />
             </Route>
             <Route path='*' element={<main className="centered-state"><h1>Page not found</h1><Link className="primary-button" to="/">Go home</Link></main>} />
-          </Routes></Suspense>
-        </CartProvider></ToastProvider>
-      </AuthProvider>
-    </BrowserRouter>
+           </Routes><SiteFooter /></Suspense>
+         </CartProvider></ToastProvider>
+       </AuthProvider>
+     </BrowserRouter>
   )
 }
 

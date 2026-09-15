@@ -2,15 +2,14 @@ import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import test from "node:test";
 import env from "../config/env.ts";
-import { checkoutSchema, themeInputSchema } from "../schemas/marketplace.ts";
+import { checkoutSchema, themeInputSchema, themePatchSchema } from "../schemas/marketplace.ts";
 import { validateStripeCheckoutAmounts, verifyStripeSignature } from "../services/stripe.service.ts";
-import { assertPaymentProviderAllowed, paymentProvidersForCountry } from "../services/payment-provider.service.ts";
-import { verifyPaymobSignature } from "../routes/webhook.route.ts";
 import { createCheckout } from "../services/checkout.service.ts";
-import { convertUsdMinorToEgpMinor, parsePaymobIntegrationId, paymobCredentials } from "../services/paymob.service.ts";
+import { themeAssetIssues } from "../utils/theme-assets.ts";
 import { AppError } from "../utils/app-error.ts";
+import { assertInvoicePaid, createInvoicePdf, type InvoiceData } from "../services/pdf.service.ts";
 
-const validTheme = { name: "Studio Grid", slug: "studio-grid", shortDescription: "A considered portfolio for creative studios.", description: "A complete, responsive portfolio theme designed for independent creative studios.", stack: ["React"], features: ["Responsive"], priceMinor: 4900, currency: "usd", version: "1.0.0", previewUrl: "https://preview.example.com", imageAssetIds: ["64b64c16e3a54f0012345678"], videoAssetIds: [], sourceAssetId: "64b64c16e3a54f0012345679", featured: false };
+const validTheme = { name: "Studio Grid", slug: "studio-grid", shortDescription: "A considered portfolio for creative studios.", description: "A complete, responsive portfolio theme designed for independent creative studios.", stack: ["React"], features: ["Responsive"], priceMinor: 4900, currency: "usd", version: "1.0.0", previewUrl: "https://preview.example.com", previewAssetId: "64b64c16e3a54f0012345670", imageAssetIds: ["64b64c16e3a54f0012345678", "64b64c16e3a54f0012345677"], videoAssetIds: ["64b64c16e3a54f0012345676"], sourceAssetId: "64b64c16e3a54f0012345679", featured: false };
 
 test("theme input preserves integer minor units and normalizes currency", () => {
   const parsed = themeInputSchema.parse(validTheme);
@@ -52,68 +51,78 @@ test("Stripe checkout reconciliation accepts provider tax without weakening subt
   }, 11520, "USD"), /subtotal does not match/);
 });
 
-test("Stripe is global while Paymob remains restricted to configured supported countries", () => {
-  for (const country of ["EG", "SA", "OM", "AE"]) assert.deepEqual(paymentProvidersForCountry(country), ["stripe", "paymob"]);
-  for (const country of ["US", "GB", "Unknown", undefined]) assert.deepEqual(paymentProvidersForCountry(country), ["stripe"]);
-  assert.deepEqual(paymentProvidersForCountry("EG", false), ["stripe"]);
-  assert.doesNotThrow(() => assertPaymentProviderAllowed("paymob", "EG"));
-  assert.throws(() => assertPaymentProviderAllowed("paymob", "US"), (error: unknown) => error instanceof AppError && error.code === "PAYMOB_REGION_RESTRICTED");
-});
-
-test("all supported Paymob countries use the shared credential set", () => {
-  const original = { secretKey: env.PAYMOB_SECRET_KEY, publicKey: env.PAYMOB_PUBLIC_KEY, integrationId: env.PAYMOB_INTEGRATION_ID };
-  try {
-    env.PAYMOB_SECRET_KEY = "shared-secret";
-    env.PAYMOB_PUBLIC_KEY = "shared-public";
-    env.PAYMOB_INTEGRATION_ID = "42";
-    const expectedBaseUrls: Record<string, string> = { EG: "https://accept.paymob.com", SA: "https://ksa.paymob.com", OM: "https://oman.paymob.com", AE: "https://uae.paymob.com" };
-    for (const country of ["EG", "SA", "OM", "AE"]) {
-      const credentials = paymobCredentials(country);
-      assert.equal(credentials?.secretKey, "shared-secret");
-      assert.equal(credentials?.publicKey, "shared-public");
-      assert.equal(credentials?.integrationId, 42);
-      assert.equal(credentials?.baseUrl, expectedBaseUrls[country]);
-    }
-    assert.equal(paymobCredentials("US"), undefined);
-  } finally {
-    env.PAYMOB_SECRET_KEY = original.secretKey;
-    env.PAYMOB_PUBLIC_KEY = original.publicKey;
-    env.PAYMOB_INTEGRATION_ID = original.integrationId;
-  }
-});
-
-test("Paymob integration IDs must be positive integers", () => {
-  assert.equal(parsePaymobIntegrationId("4345907"), 4345907);
-  assert.equal(parsePaymobIntegrationId("not-an-integration-id"), undefined);
-  assert.equal(parsePaymobIntegrationId("0"), undefined);
-});
-
-test("USD minor units convert to EGP minor units using the snapshotted rate", () => {
-  assert.equal(convertUsdMinorToEgpMinor(100, 51.37), 5137);
-  assert.equal(convertUsdMinorToEgpMinor(11520, 51.37), 591782);
-  assert.throws(() => convertUsdMinorToEgpMinor(100, 0), /rate must be positive/);
-});
-
-test("checkout accepts only Stripe or Paymob provider selection", () => {
+test("checkout does not accept a client-selected payment provider", () => {
   const idempotencyKey = "e1ec2cf8-53f9-4f3f-8e72-21c50c028295";
   assert.deepEqual(checkoutSchema.parse({ idempotencyKey }), { idempotencyKey });
-  assert.equal(checkoutSchema.safeParse({ idempotencyKey, provider: "stripe" }).success, true);
-  assert.equal(checkoutSchema.safeParse({ idempotencyKey, provider: "paymob" }).success, true);
+  assert.equal(checkoutSchema.safeParse({ idempotencyKey, provider: "stripe" }).success, false);
   assert.equal(checkoutSchema.safeParse({ idempotencyKey, provider: "paypal" }).success, false);
 });
 
 test("administrator accounts cannot create marketplace checkouts", async () => {
   await assert.rejects(
-    createCheckout({ _id: "admin-id", email: "admin@example.com", name: "Admin", role: "admin" }, "e1ec2cf8-53f9-4f3f-8e72-21c50c028295", "stripe"),
+    createCheckout({ _id: "admin-id", email: "admin@example.com", name: "Admin", role: "admin" }, "e1ec2cf8-53f9-4f3f-8e72-21c50c028295"),
     (error: unknown) => error instanceof AppError && error.status === 403 && error.code === "ADMIN_PURCHASE_FORBIDDEN",
   );
 });
 
-test("Paymob webhook signatures cover the documented transaction fields", () => {
-  env.PAYMOB_HMAC_SECRET = "paymob-test-secret";
-  const object = { amount_cents: 4900, created_at: "2026-09-14", currency: "USD", error_occured: false, has_parent_transaction: false, id: 42, integration_id: 7, is_3d_secure: true, is_auth: false, is_capture: true, is_refunded: false, is_standalone_payment: true, is_voided: false, order: { id: 11 }, owner: 1, pending: false, source_data: { pan: "2346", sub_type: "MasterCard", type: "card" }, success: true };
-  const payload = [4900, "2026-09-14", "USD", false, false, 42, 7, true, false, true, false, true, false, 11, 1, false, "2346", "MasterCard", "card", true].join("");
-  const signature = createHmac("sha512", env.PAYMOB_HMAC_SECRET).update(payload).digest("hex");
-  assert.equal(verifyPaymobSignature(object, signature), true);
-  assert.equal(verifyPaymobSignature({ ...object, amount_cents: 5000 }, signature), false);
+test("invoice PDFs are generated only for paid orders", async () => {
+  assert.throws(() => assertInvoicePaid("pending"), (error: unknown) => error instanceof AppError && error.code === "INVOICE_NOT_AVAILABLE");
+  const invoice = {
+    order: {
+      _id: "64b64c16e3a54f0012345679", orderNumber: "ORD-20260915-DEMO", userId: "64b64c16e3a54f0012345671", status: "paid", paymentProvider: "stripe",
+      checkoutKey: "invoice-test", currency: "USD", subtotalMinor: 9800, discountMinor: 980, taxMinor: 706, totalMinor: 9526,
+      discountSnapshot: { code: "WELCOME10", percentage: 10 }, paidAt: new Date("2026-09-15T10:05:00Z"), createdAt: new Date("2026-09-15T10:00:00Z"), updatedAt: new Date("2026-09-15T10:05:00Z"),
+      items: [
+        { _id: "64b64c16e3a54f0012345672", themeId: "64b64c16e3a54f0012345673", sourceAssetId: "64b64c16e3a54f0012345674", name: "Studio Grid", slug: "studio-grid", version: "1.0.0", priceMinor: 4900, discountMinor: 490, totalMinor: 4410 },
+        { _id: "64b64c16e3a54f0012345675", themeId: "64b64c16e3a54f0012345676", sourceAssetId: "64b64c16e3a54f0012345677", name: "Motion Folio", slug: "motion-folio", version: "2.1.0", priceMinor: 4900, discountMinor: 490, totalMinor: 4410 },
+      ],
+    },
+    customer: { name: "Ahmed Customer", email: "customer@example.com", phone: "+20 100 000 0000" },
+    region: { city: "Cairo", region: "C", country: "EG", timezone: "Africa/Cairo" },
+  } as unknown as InvoiceData;
+  const pdf = await createInvoicePdf(invoice);
+  assert.equal(pdf.subarray(0, 5).toString(), "%PDF-");
+  assert.ok(pdf.length > 3_000);
+});
+
+
+test("theme media limits apply to creation and partial updates", () => {
+  const ids = (count: number) => Array.from({ length: count }, (_, index) => index.toString(16).padStart(24, "0"));
+  for (const count of [0, 1, 11]) {
+    assert.equal(themeInputSchema.safeParse({ ...validTheme, imageAssetIds: ids(count) }).success, false);
+    assert.equal(themePatchSchema.safeParse({ imageAssetIds: ids(count) }).success, false);
+  }
+  for (const count of [2, 10]) assert.equal(themeInputSchema.safeParse({ ...validTheme, imageAssetIds: ids(count) }).success, true);
+  for (const count of [0, 3]) {
+    assert.equal(themeInputSchema.safeParse({ ...validTheme, videoAssetIds: ids(count) }).success, false);
+    assert.equal(themePatchSchema.safeParse({ videoAssetIds: ids(count) }).success, false);
+  }
+  assert.equal(themeInputSchema.safeParse({ ...validTheme, videoAssetIds: ids(2) }).success, true);
+  assert.equal(themeInputSchema.safeParse({ ...validTheme, previewAssetId: undefined }).success, false);
+  assert.equal(themeInputSchema.safeParse({ ...validTheme, previewAssetId: validTheme.videoAssetIds[0] }).success, false);
+  assert.equal(themePatchSchema.safeParse({ setupInstructions: "", deployInstructions: "", instructionsFormat: "html" }).success, true);
+});
+
+test("theme assets require the correct roles, ready status, and distinct files", () => {
+  const assets = new Map([
+    [validTheme.previewAssetId, { kind: "video", contentType: "video/mp4", status: "ready" }],
+    ...validTheme.imageAssetIds.map((id) => [id, { kind: "image", contentType: "image/png", status: "ready" }] as const),
+    [validTheme.videoAssetIds[0]!, { kind: "video", contentType: "video/webm", status: "ready" }],
+    [validTheme.sourceAssetId, { kind: "theme_zip", contentType: "application/zip", status: "ready" }],
+  ]);
+  assert.deepEqual(themeAssetIssues(validTheme, assets), []);
+  assets.set(validTheme.previewAssetId, { kind: "image", contentType: "image/gif", status: "ready" });
+  assert.deepEqual(themeAssetIssues(validTheme, assets), []);
+  assets.set(validTheme.previewAssetId, { kind: "image", contentType: "image/png", status: "ready" });
+  assert.equal(themeAssetIssues(validTheme, assets)[0]?.path[0], "previewAssetId");
+  assets.set(validTheme.previewAssetId, { kind: "video", contentType: "video/webm", status: "ready" });
+  assert.deepEqual(themeAssetIssues(validTheme, assets), []);
+  assets.set(validTheme.imageAssetIds[0]!, { kind: "image", contentType: "image/png", status: "processing" });
+  assert.equal(themeAssetIssues(validTheme, assets)[0]?.path[0], "imageAssetIds");
+  assets.set(validTheme.imageAssetIds[0]!, { kind: "image", contentType: "image/png", status: "ready" });
+  assert.ok(themeAssetIssues({ ...validTheme, videoAssetIds: [validTheme.previewAssetId] }, assets).some((issue) => issue.path[0] === "previewAssets"));
+  assets.delete(validTheme.videoAssetIds[0]!);
+  assert.ok(themeAssetIssues(validTheme, assets).some((issue) => issue.path[0] === "videoAssetIds"));
+  assets.delete(validTheme.sourceAssetId);
+  assert.ok(themeAssetIssues(validTheme, assets).some((issue) => issue.path[0] === "sourceAssetId"));
 });

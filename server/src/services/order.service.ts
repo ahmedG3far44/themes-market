@@ -13,7 +13,7 @@ import UserModel from "../models/user.ts";
 import UploadAssetModel from "../models/upload-asset.ts";
 
 function serializeOrder(order: OrderDocument & { _id: unknown }) {
-  return { id: String(order._id), orderNumber: order.orderNumber, userId: String(order.userId), status: order.status, paymentProvider: order.paymentProvider, currency: order.currency, subtotalMinor: order.subtotalMinor, discountMinor: order.discountMinor, taxMinor: order.taxMinor ?? 0, totalMinor: order.totalMinor, paymentAmountMinor: order.paymentAmountMinor, paymentCurrency: order.paymentCurrency, exchangeRate: order.exchangeRate, discountSnapshot: order.discountSnapshot, items: order.items.map((item) => ({ id: String(item._id), themeId: String(item.themeId), name: item.name, slug: item.slug, version: item.version, priceMinor: item.priceMinor, discountMinor: item.discountMinor, totalMinor: item.totalMinor })), paidAt: order.paidAt, createdAt: order.createdAt, updatedAt: order.updatedAt };
+  return { id: String(order._id), orderNumber: order.orderNumber, userId: String(order.userId), status: order.status, paymentProvider: order.paymentProvider, currency: order.currency, subtotalMinor: order.subtotalMinor, discountMinor: order.discountMinor, taxMinor: order.taxMinor ?? 0, totalMinor: order.totalMinor, paymentAmountMinor: order.paymentAmountMinor, paymentCurrency: order.paymentCurrency, discountSnapshot: order.discountSnapshot, customerSnapshot: order.customerSnapshot, regionSnapshot: order.regionSnapshot, items: order.items.map((item) => ({ id: String(item._id), themeId: String(item.themeId), name: item.name, slug: item.slug, version: item.version, priceMinor: item.priceMinor, discountMinor: item.discountMinor, totalMinor: item.totalMinor })), paidAt: order.paidAt, createdAt: order.createdAt, updatedAt: order.updatedAt };
 }
 
 export async function listOrdersForUser(userId: unknown) { return (await OrderModel.find({ userId }).sort({ createdAt: -1 }).lean()).map((item) => serializeOrder(item as OrderDocument & { _id: unknown })); }
@@ -50,7 +50,7 @@ export async function listAdminOrders(query: Record<string, unknown>) {
   return { items: items.map((item) => ({ ...serializeOrder(item as OrderDocument & { _id: unknown }), user: item.userId })), page, pageSize, total, pages: Math.max(1, Math.ceil(total / pageSize)) };
 }
 
-export async function getAdminOrder(id: string) { const order = await OrderModel.findById(id).populate("userId", "name email avatarUrl provider").lean(); if (!order) throw new AppError(404, "ORDER_NOT_FOUND", "Order not found"); return { ...serializeOrder(order as OrderDocument & { _id: unknown }), user: order.userId }; }
+export async function getAdminOrder(id: string) { const order = await OrderModel.findById(id).populate("userId", "name email phone avatarUrl provider").lean(); if (!order) throw new AppError(404, "ORDER_NOT_FOUND", "Order not found"); return { ...serializeOrder(order as OrderDocument & { _id: unknown }), user: order.userId }; }
 
 export async function marketplaceInsights(period: "day" | "week" | "month" | "six_months" | "year", from?: string, to?: string) {
   const end = to ? new Date(`${to}T23:59:59.999`) : new Date(); const start = from ? new Date(from) : new Date(end);

@@ -13,6 +13,7 @@ export interface IUser {
   avatarUrl?: string;
   name: string;
   username?: string;
+  phone?: string;
   role: UserRole;
   status: UserStatus;
   lastLoginAt?: string;
@@ -58,7 +59,7 @@ export interface TransactionType {
   userId: IUser | string;
   planId?: PlanType | string;
   product?: { name: string; description?: string };
-  provider: "stripe" | "paymob" | "manual";
+  provider: "stripe" | "manual";
   externalId?: string;
   amount: number;
   amountMinor?: number;
@@ -112,7 +113,9 @@ export interface ThemeType {
   changelog?: string;
   setupInstructions?: string;
   deployInstructions?: string;
+  instructionsFormat?: "plain" | "html";
   previewUrl: string;
+  previewAsset?: PublicAsset;
   images: PublicAsset[];
   videos: PublicAsset[];
   sourceAsset?: Pick<PublicAsset, "id" | "kind" | "status" | "originalName" | "sizeBytes">;
@@ -145,7 +148,7 @@ export interface DiscountSnapshot {
 }
 
 export interface CartType {
-  items: Array<{ themeId: string; name: string; slug: string; priceMinor: number; currency: string; addedAt: string }>;
+  items: Array<{ themeId: string; name: string; slug: string; priceMinor: number; currency: string; addedAt: string; previewAsset?: PublicAsset }>;
   discountCode?: string;
   discountPercentage?: number;
   subtotalMinor: number;
@@ -172,7 +175,7 @@ export interface OrderType {
   orderNumber: string;
   userId: IUser | string;
   status: OrderStatus;
-  paymentProvider: "stripe" | "paymob";
+  paymentProvider: "stripe";
   currency: string;
   subtotalMinor: number;
   discountMinor: number;
@@ -180,8 +183,9 @@ export interface OrderType {
   totalMinor: number;
   paymentAmountMinor?: number;
   paymentCurrency?: string;
-  exchangeRate?: number;
   discountSnapshot?: DiscountSnapshot;
+  customerSnapshot?: { name: string; email: string; phone?: string };
+  regionSnapshot?: { country?: string; region?: string; city?: string; timezone?: string };
   items: OrderItemType[];
   paidAt?: string;
   createdAt: string;
@@ -219,6 +223,19 @@ export interface DiscountType {
 }
 
 
+
+export interface SiteContentType {
+  privacyHtml: string;
+  termsHtml: string;
+  refundHtml: string;
+  socials: {
+    instagram: string;
+    tiktok: string;
+    youtube: string;
+    linkedin: string;
+  };
+  updatedAt?: string;
+}
 
 // Stripe types:
 export interface CheckoutItem {

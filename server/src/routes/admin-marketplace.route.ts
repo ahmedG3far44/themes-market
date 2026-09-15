@@ -9,6 +9,7 @@ import { getAdminOrder, listAdminOrders, marketplaceInsights, themeSales } from 
 import { archiveOrDeleteTheme, createTheme, getAdminTheme, listAdminThemes, publishTheme, updateTheme } from "../services/theme.service.ts";
 import { cancelUpload, completeUpload, initiateUpload, uploadPart } from "../services/upload.service.ts";
 import { AppError } from "../utils/app-error.ts";
+import { paidOrderInvoiceForAdmin } from "../services/pdf.service.ts";
 
 const router = Router(); router.use(requireDatabaseUser, requireAdmin);
 
@@ -27,6 +28,16 @@ router.post("/uploads/:id/complete", async (req, res, next) => { try { const { i
 
 router.get("/orders", async (req, res, next) => { try { res.json({ success: true, data: await listAdminOrders(req.query) }); } catch (error) { next(error); } });
 router.get("/orders/:id", async (req, res, next) => { try { const { id } = parseOrThrow(idSchema, req.params); res.json({ success: true, data: await getAdminOrder(id) }); } catch (error) { next(error); } });
+router.get("/orders/:id/invoice", rateLimit("admin-invoice", 30, 60_000, true), async (req, res, next) => {
+  try {
+    const { id } = parseOrThrow(idSchema, req.params);
+    const invoice = await paidOrderInvoiceForAdmin(id);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${invoice.filename}"`);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.send(invoice.pdf);
+  } catch (error) { next(error); }
+});
 
 router.get("/discounts", async (req, res, next) => { try { const page = Math.max(1, Number(req.query.page) || 1), pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 15)); const filter = req.query.search ? { code: new RegExp(String(req.query.search).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") } : {}; const [items, total] = await Promise.all([DiscountModel.find(filter).sort({ createdAt: -1 }).skip((page - 1) * pageSize).limit(pageSize).lean(), DiscountModel.countDocuments(filter)]); res.json({ success: true, data: { items: items.map((item) => ({ ...item, id: String(item._id) })), page, pageSize, total, pages: Math.max(1, Math.ceil(total / pageSize)) } }); } catch (error) { next(error); } });
 router.post("/discounts/generate", (_req, res) => { res.json({ success: true, data: { code: `SAVE-${randomBytes(4).toString("hex").toUpperCase()}` } }); });
