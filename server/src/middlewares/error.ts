@@ -8,10 +8,12 @@ declare global {
 }
 
 export function requestContext(req: Request, res: Response, next: NextFunction): void {
+  console.log("Request ID:", req.requestId);
   req.requestId = String(req.headers["x-request-id"] ?? randomUUID());
   res.setHeader("X-Request-Id", req.requestId);
   next();
 }
+
 
 export function notFound(req: Request, res: Response): void {
   res.status(404).json({ success: false, type: "about:blank", title: "Route not found", status: 404, code: "NOT_FOUND", detail: `Route not found: ${req.method} ${req.path}`, requestId: req.requestId, errors: [] });

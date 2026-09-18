@@ -1,7 +1,7 @@
 import type { ApiResponse } from "@shared/types";
 import { z } from "zod";
 
-const API_URL = (import.meta.env.VITE_BASE_URL ?? "http://localhost:3000/api/v1").replace(/\/$/, "");
+const API_URL = import.meta.env.VITE_BASE_URL || "/api";
 type TokenGetter = (skipCache?: boolean) => Promise<string | null>;
 const successEnvelopeSchema = z.object({
   success: z.literal(true),

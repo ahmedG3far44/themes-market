@@ -9,7 +9,9 @@
     "build": "tsc",
     "start": "node dist/server/src/index.js",
     "seed": "npm run build --silent && node dist/server/src/seed.js",
+    "seed:compiled": "node dist/server/src/seed.js",
     "r2:setup": "npm run build --silent && node dist/server/src/setup-r2.js",
+    "r2:setup:compiled": "node dist/server/src/setup-r2.js",
     "test": "npm run build --silent && node --test dist/server/src/__tests__/marketplace.test.js"
   },
   "keywords": [],

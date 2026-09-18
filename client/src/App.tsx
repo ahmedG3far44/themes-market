@@ -36,10 +36,12 @@ const RefundPage = lazy(() => import('./routes/refund'))
 const AboutPage = lazy(() => import('./routes/about'))
 const ContactPage = lazy(() => import('./routes/contact'))
 const AdminContentPage = lazy(() => import('./routes/admin/content'))
+const ThemePreviewPage = lazy(() => import('./routes/theme-preview'))
 
 function SiteFooter() {
   const location = useLocation()
   if (location.pathname.startsWith('/admin') || location.pathname.startsWith('/sign-in') || location.pathname.startsWith('/sign-up')) return null
+  if (location.pathname.includes('/preview')) return null
   return <Footer />
 }
 
@@ -55,6 +57,7 @@ function App() {
             <Route path='/profile' element={<Protected><UserDashboard /></Protected>} />
             <Route path='/subscription' element={<Protected><UserDashboard /></Protected>} />
             <Route path='/themes' element={<ThemesPage />} />
+            <Route path='/themes/:slug/preview' element={<ThemePreviewPage />} />
             <Route path='/themes/:slug' element={<ThemeDetailPage />} />
             <Route path='/about' element={<AboutPage />} />
             <Route path='/contact' element={<ContactPage />} />

@@ -5,7 +5,7 @@ import Header from "../components/header";
 
 import { themePreview } from "../lib/theme-media";
 import type { ThemeType } from "@shared/types";
-import { ArrowLeft, ArrowUpRight, Check, Download, ShoppingBag } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Check, Download, Eye, ShoppingBag } from "lucide-react";
 import { useEffect } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ErrorMessage } from "../components/ui/error-message";
@@ -44,18 +44,20 @@ export default function ThemeDetailPage() {
 
 
           <div className="detail-actions">
-            <div className="px-3 py-1 rounded-lg bg-white border border-zinc-200">
-              <strong>{money(theme.priceMinor, theme.currency)}</strong>
-            </div>
+            <span className="detail-price" aria-label={`Price ${money(theme.priceMinor, theme.currency)}`}>{money(theme.priceMinor, theme.currency)}</span>
 
-            <div className="space-x-2">
-              {theme.purchased ? <Link className="primary-button" to="/purchases">Open your library <Download size={14} /> </Link>
+            <div className="detail-cta-group">
+              {theme.purchased ? <Link className="primary-button detail-primary-cta" to="/purchases">Open library <Download size={15} /></Link>
                 : user?.role === "admin" ? null
-                  : theme.canPurchase === false ? <button className="primary-button" disabled title="The download package has not been uploaded yet"><ShoppingBag size={14} />Coming soon</button>
-                    : user ? <button className="primary-button" disabled={cart.isLoading} onClick={() => void cart.add(theme.id).catch(() => undefined)}><ShoppingBag size={14} />Add to cart</button>
-                      : <Link className="primary-button" to="/sign-in">Sign in to purchase</Link>}
+                  : theme.canPurchase === false ? <button className="primary-button detail-primary-cta" disabled title="The download package has not been uploaded yet"><ShoppingBag size={15} />Coming soon</button>
+                    : user ? <button className="primary-button detail-primary-cta" disabled={cart.isLoading} onClick={() => void cart.add(theme.id).catch(() => undefined)}><ShoppingBag size={15} />Add to cart</button>
+                      : <Link className="primary-button detail-primary-cta" to="/sign-in">Sign in to purchase</Link>}
 
-              <a className="secondary-button" href={theme.previewUrl} target="_blank" rel="noreferrer">Live preview <ArrowUpRight size={16} /></a>
+              {(theme.purchased || user?.role !== "admin") ? <span className="detail-cta-divider" aria-hidden="true" /> : null}
+
+              <div className="detail-preview-group">
+                <Link className="secondary-button detail-preview-button" to={`/themes/${theme.slug}/preview`}><Eye size={15} />Live preview <ArrowUpRight size={14} /></Link>
+              </div>
             </div>
           </div>
 

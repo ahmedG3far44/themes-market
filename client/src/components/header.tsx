@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { Show, UserButton } from "@clerk/react";
 import { useCart } from "../context/cart-store";
 import { useAppAuth } from "../context/auth-store";
-import { ClipboardClock, LayoutDashboardIcon, ShoppingBag, SwatchBook } from "lucide-react";
+import { LayoutDashboardIcon, LayoutTemplate, Library, ShoppingBag } from "lucide-react";
 
 function Header() {
     const { count } = useCart(); const { user } = useAppAuth();
@@ -14,8 +14,8 @@ function Header() {
             <nav className="main-nav">
                 <Show when="signed-in">
                     {user?.role === "customer" && <div className="space-x-4 flex">
-                        <Link className="text-sm font-bold flex space-x-2" to="/purchases"><span><ClipboardClock size={18} /> </span><span>Purchases</span></Link>
-                        <Link className="text-sm font-bold flex space-x-2" to="/themes"><span><SwatchBook size={18} /></span><span>Themes</span></Link>
+                        <Link className="text-sm font-bold flex space-x-2" to="/purchases"><span><Library size={18} /> </span><span>Purchases</span></Link>
+                        <Link className="text-sm font-bold flex space-x-2" to="/themes"><span><LayoutTemplate size={18} /></span><span>Themes</span></Link>
                     </div>}
                     {user?.role === "admin" && <Link className="text-sm font-bold flex space-x-2" to="/admin"><span><LayoutDashboardIcon size={18} /></span><span>Dashboard</span></Link>}
                 </Show>
