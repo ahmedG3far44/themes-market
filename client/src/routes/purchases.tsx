@@ -1,33 +1,20 @@
 /* useAsync.run is stable across renders. */
 /* oxlint-disable react-hooks/exhaustive-deps */
 import type { PurchaseOverviewType } from "@shared/types";
-import { CheckCircle2, Clock3, Download, ExternalLink, PackageOpen, ReceiptText, XCircle } from "lucide-react";
+import { CheckCircle2, Clock3, PackageOpen, XCircle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { ErrorMessage } from "../components/ui/error-message";
+import { ErrorState } from "./error/error";
 import { Skeleton } from "../components/ui/skeleton";
 import { Spinner } from "../components/ui/spinner";
 import { useToast } from "../context/toast-store";
 import { useCart } from "../context/cart-store";
 import { useAsync } from "../hooks/use-async";
 import { api } from "../lib/api";
-import { dateTime, money } from "../lib/format";
 
 import Header from "../components/header";
-
-
-
-type PurchaseOrder = PurchaseOverviewType["orders"][number];
-
-function OrderList({ orders, emptyMessage }: { orders: PurchaseOrder[]; emptyMessage: string }) {
-  if (!orders.length) return <div className="history-empty"><ReceiptText size={22} /><p>{emptyMessage}</p></div>;
-  return <div className="customer-orders">{orders.map((order) => <Link className="customer-order-row" to={`/orders/${order.id}`} key={order.id}>
-    <span className="purchase-icon"><ReceiptText size={19} /></span>
-    <span className="order-row-details"><strong>{order.orderNumber}</strong><small>{order.items.map((item) => item.name).join(", ")}</small></span>
-    <span className="order-row-amount"><strong>{money(order.totalMinor, order.currency)}</strong><small>{dateTime(order.createdAt)}</small></span>
-    <span className={`status-pill ${order.status === "paid" ? "active" : order.status === "pending" ? "pending" : "blocked"}`}>{order.status}</span>
-  </Link>)}</div>;
-}
+import { OwnedThemeCard } from "../components/owned-theme-card";
 
 export default function PurchasesPage() {
   const request = useAsync<PurchaseOverviewType>();
@@ -39,6 +26,7 @@ export default function PurchasesPage() {
   const returnedOrderId = params.get("order_id") ?? sessionStorage.getItem("pendingOrderId");
   const returningFromPayment = params.get("payment") === "processing";
   const [confirmation, setConfirmation] = useState<"idle" | "processing" | "paid" | "failed" | "delayed">(returningFromPayment ? "processing" : "idle");
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const load = useCallback(() => request.run(api.get<PurchaseOverviewType>("/purchases")), [request.run]);
 
   useEffect(() => { void load().catch(() => undefined); }, [load]);
@@ -79,27 +67,34 @@ export default function PurchasesPage() {
   }, [cart.refresh, load, navigate, notify, returnedOrderId, returningFromPayment]);
 
   const getFile = async (id: string) => {
+    setDownloadingId(id);
     try {
       const result = await download.run(api.post(`/entitlements/${id}/download`));
       window.location.assign(result.url);
       notify("Your secure download is ready");
       await load();
     } catch { return; }
+    finally { setDownloadingId(null); }
   };
 
   const entitlements = request.data?.entitlements ?? [];
-  const orders = request.data?.orders ?? [];
-  const transactions = orders.filter((order) => order.status === "pending" || order.status === "failed");
-  const completedOrders = orders.filter((order) => order.status === "paid");
 
+  if (request.error) return <ErrorState
+    title="We couldn’t load your library"
+    message={request.error}
+    onRetry={() => void load().catch(() => undefined)}
+    retryLabel="Reload purchases"
+    backTo="/themes"
+    backLabel="Browse themes"
+  />;
 
 
   return <div className="store-page">
     <Header />
     <main className="library-page">
       <div className="catalog-heading">
-        <span className="eyebrow">Your library</span><h1>Purchases and orders</h1>
-        <p>Download paid themes and follow every checkout from creation through payment confirmation.</p>
+        <span className="eyebrow">Your library</span><h1>Your purchased themes</h1>
+        <p>Download the themes you own and open their details or live previews.</p>
       </div>
 
       {confirmation !== "idle" && <div className={`payment-confirmation ${confirmation}`} role="status" aria-live="polite">
@@ -108,25 +103,13 @@ export default function PurchasesPage() {
           <span>{confirmation === "paid" ? "Your cart is empty and your download is now available." : confirmation === "failed" ? "Your order was not charged successfully." : "This page will update when Stripe's signed webhook arrives."}</span></div>
       </div>}
 
-      {(request.error || download.error) && <ErrorMessage message={(request.error || download.error)!} onDismiss={() => { request.clearError(); download.clearError(); }} />}
+      {download.error && <ErrorMessage message={download.error} onDismiss={download.clearError} />}
       {request.isLoading && !request.data ? <div className="purchase-loading" aria-label="Loading purchases">{[1, 2, 3].map((item) => <Skeleton className="purchase-card-skeleton" key={item} />)}</div> : <>
         <section className="library-section" aria-labelledby="downloads-heading">
           <div className="library-section-heading"><div><span className="eyebrow">Available now</span><h2 id="downloads-heading">Theme downloads</h2></div><span>{entitlements.length} {entitlements.length === 1 ? "theme" : "themes"}</span></div>
-        {entitlements.length ? <div className="purchase-grid">{entitlements.map((item) => <article className="purchase-card" key={item.id}><div className="purchase-icon"><PackageOpen size={24} /></div><div><span className={`status-pill ${item.status === "active" ? "active" : "blocked"}`}>{item.status}</span><h2>{item.theme?.name ?? "Archived theme"}</h2><p>Version {item.purchasedVersion} · Purchased {dateTime(item.purchasedAt)}</p></div><div className="download-meter"><div><span>Downloads used</span><strong>{item.downloadsUsed} / {item.downloadLimit}</strong></div><progress value={item.downloadsUsed} max={item.downloadLimit} /></div><div className="purchase-actions"><button className="primary-button" disabled={download.isLoading || item.status !== "active" || item.downloadsUsed >= item.downloadLimit} onClick={() => void getFile(item.id)}>{download.isLoading ? <Spinner size="sm" /> : <Download size={17} />}Download source</button>{item.theme && <Link className="secondary-button" to={`/themes/${item.theme.slug}`}><ExternalLink size={16} />View theme</Link>}<Link className="text-button" to={`/orders/${item.orderId}`}>View order</Link></div></article>)}</div> : <div className="library-empty"><PackageOpen size={25} /><p>Paid theme downloads will appear here after the payment webhook is confirmed.</p></div>}
+        {entitlements.length ? <div className="purchase-grid">{entitlements.map((item) => <OwnedThemeCard key={item.id} entitlement={item} downloading={downloadingId === item.id} onDownload={(id) => void getFile(id)} />)}</div> : <div className="library-empty"><PackageOpen size={25} /><p>Paid theme downloads will appear here after the payment webhook is confirmed.</p></div>}
         </section>
 
-      <section className="library-section order-history-section" aria-label="Order history">
-        <div className="space-y-4">
-          <article className="order-history-panel completed-panel">
-            <header><div><span className="eyebrow">Payment confirmed</span><h2>Completed orders</h2><p>Paid orders with available purchase details.</p></div><span className="history-count">{completedOrders.length}</span></header>
-            <OrderList orders={completedOrders} emptyMessage="No completed orders yet." />
-          </article>
-          <article className="order-history-panel transactions-panel">
-            <header><div><span className="eyebrow">Needs attention</span><h2>Transactions History</h2><p>Pending and unsuccessful checkout attempts.</p></div><span className="history-count">{transactions.length}</span></header>
-            <OrderList orders={transactions} emptyMessage="No pending or failed transactions." />
-          </article>
-        </div>
-      </section>
     </>}
   </main></div>;
 }

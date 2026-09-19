@@ -12,6 +12,7 @@ import { api, ApiError } from "../../lib/api";
 import { RichTextEditor } from "../../components/ui/rich-text-editor";
 import { ThemeMedia } from "../../components/theme-media";
 import { instructionHtml } from "../../lib/instructions";
+import { ErrorState } from "../error/error";
 
 const blank = {
   name: "", slug: "", shortDescription: "", description: "", stack: "React, TypeScript",
@@ -236,12 +237,20 @@ export default function AdminThemeEditorPage() {
   };
 
   if (request.isLoading && id) return <main className="admin-page"><div className="page-loader"><Spinner size="md" /></div></main>;
+  if (request.error) return <ErrorState
+    title="We couldn’t load this theme"
+    message={request.error}
+    onRetry={id ? () => window.location.reload() : undefined}
+    retryLabel="Reload theme"
+    backTo="/admin/themes"
+    backLabel="Back to theme library"
+  />;
   const busy = save.isLoading || Boolean(uploading);
 
   return <main className="admin-page">
     <Link className="back-link" to="/admin/themes"><ArrowLeft size={16} />Theme library</Link>
     <div className="editor-heading"><div><span className="eyebrow">Catalog editor</span><h1>{id ? "Edit theme" : "Create a theme"}</h1><p>Add one animated preview, 2–10 theme images, 1–2 tutorial videos, and the private source ZIP.</p></div></div>
-    {(request.error || save.error) && <ErrorMessage message={(request.error || save.error)!} onDismiss={() => { request.clearError(); save.clearError(); }} />}
+    {save.error && <ErrorMessage message={save.error} onDismiss={save.clearError} />}
     <form className="theme-editor" onSubmit={submit} noValidate>
       <section className="editor-main">
         <div className="editor-section"><h2>Identity and story</h2><div className="form-grid">

@@ -11,6 +11,7 @@ import { useToast } from "../../context/toast-store";
 import { useAsync } from "../../hooks/use-async";
 import { api } from "../../lib/api";
 import { dateTime } from "../../lib/format";
+import { ErrorState } from "../error/error";
 
 export default function DiscountsPage() { 
     const [search, setSearch] = useState(""); 
@@ -39,9 +40,17 @@ export default function DiscountsPage() {
         } 
     };
 
+    if (request.error) return <ErrorState
+        title="We couldn’t load discounts"
+        message={request.error}
+        onRetry={() => void load()}
+        retryLabel="Reload discounts"
+        backTo="/admin"
+        backLabel="Back to insights"
+    />;
 
     return <main className="admin-page">
-        <PageHeader eyebrow="Promotions" title="Discounts" description="Create percentage codes with clear validity windows and optional redemption limits." actions={<button className="primary-button" onClick={() => setEditing("new")}><Plus size={17} />New discount</button>} />{(request.error || action.error) && <ErrorMessage message={(request.error || action.error)!} onDismiss={() => { request.clearError(); action.clearError(); }} />}<section className="panel data-panel"><div className="filters-row"><div className="search-box"><Search size={18} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search discount code" /></div></div>{request.isLoading && !request.data ? <TableSkeleton columns={6} /> : !request.data?.items.length ? <div className="empty-state"><Percent size={25} />No discounts yet.</div> : <div className="table-scroll"><table><thead><tr><th>Code</th><th>Value</th><th>Validity</th><th>Redemptions</th><th>Status</th><th>Actions</th></tr></thead><tbody>{request.data.items.map((item) => { const expired = new Date(item.expiresAt) <= new Date(); return <tr key={item.id}><td><strong className="code-chip">{item.code}</strong></td><td>{item.percentage}% off</td><td><small>{item.startsAt ? dateTime(item.startsAt) : "Immediately"}<br />to {dateTime(item.expiresAt)}</small></td><td>{item.redemptionCount} / {item.usageLimit ?? "∞"}</td><td><span className={`status-pill ${item.active && !expired ? "active" : "blocked"}`}>{expired ? "expired" : item.active ? "active" : "inactive"}</span></td><td><div className="row-actions"><button className="icon-button" onClick={() => setEditing(item)} aria-label="Edit"><Edit3 size={17} /></button><button className="icon-button danger" onClick={() => void remove(item)} aria-label="Delete"><Trash2 size={17} /></button></div></td></tr>; })}</tbody></table></div>}</section>{editing && <DiscountModal item={editing === "new" ? undefined : editing} loading={action.isLoading} onClose={() => setEditing(null)} onSave={async (body) => { try { await action.run(editing === "new" ? api.post("/admin/discounts", body) : api.put(`/admin/discounts/${editing.id}`, body)); notify(editing === "new" ? "Discount created" : "Discount updated"); setEditing(null); await load(); } catch { return; } }} />}
+        <PageHeader eyebrow="Promotions" title="Discounts" description="Create percentage codes with clear validity windows and optional redemption limits." actions={<button className="primary-button" onClick={() => setEditing("new")}><Plus size={17} />New discount</button>} />{action.error && <ErrorMessage message={action.error} onDismiss={action.clearError} />}<section className="panel data-panel"><div className="filters-row"><div className="search-box"><Search size={18} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search discount code" /></div></div>{request.isLoading && !request.data ? <TableSkeleton columns={6} /> : !request.data?.items.length ? <div className="empty-state"><Percent size={25} />No discounts yet.</div> : <div className="table-scroll"><table><thead><tr><th>Code</th><th>Value</th><th>Validity</th><th>Redemptions</th><th>Status</th><th>Actions</th></tr></thead><tbody>{request.data.items.map((item) => { const expired = new Date(item.expiresAt) <= new Date(); return <tr key={item.id}><td><strong className="code-chip">{item.code}</strong></td><td>{item.percentage}% off</td><td><small>{item.startsAt ? dateTime(item.startsAt) : "Immediately"}<br />to {dateTime(item.expiresAt)}</small></td><td>{item.redemptionCount} / {item.usageLimit ?? "∞"}</td><td><span className={`status-pill ${item.active && !expired ? "active" : "blocked"}`}>{expired ? "expired" : item.active ? "active" : "inactive"}</span></td><td><div className="row-actions"><button className="icon-button" onClick={() => setEditing(item)} aria-label="Edit"><Edit3 size={17} /></button><button className="icon-button danger" onClick={() => void remove(item)} aria-label="Delete"><Trash2 size={17} /></button></div></td></tr>; })}</tbody></table></div>}</section>{editing && <DiscountModal item={editing === "new" ? undefined : editing} loading={action.isLoading} onClose={() => setEditing(null)} onSave={async (body) => { try { await action.run(editing === "new" ? api.post("/admin/discounts", body) : api.put(`/admin/discounts/${editing.id}`, body)); notify(editing === "new" ? "Discount created" : "Discount updated"); setEditing(null); await load(); } catch { return; } }} />}
     </main>; }
 
 

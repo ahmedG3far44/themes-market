@@ -1,8 +1,7 @@
 import type { CatalogResponse } from "@shared/types";
-import { ArrowRight, BadgeCheck, Layers3, ShieldCheck, Zap } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
-import Header from "../components/header";
 import { ThemeCard } from "../components/theme-card";
 import { ErrorMessage } from "../components/ui/error-message";
 import { Skeleton } from "../components/ui/skeleton";
@@ -10,6 +9,7 @@ import { useAppAuth } from "../context/auth-store";
 import { useCart } from "../context/cart-store";
 import { useAsync } from "../hooks/use-async";
 import { api } from "../lib/api";
+import HeroSection from "../components/hero";
 
 export default function Home() {
   const { user } = useAppAuth();
@@ -21,22 +21,10 @@ export default function Home() {
   }, [run]);
 
   return <div className="marketing-page">
-    <Header />
+
+    <HeroSection />
     <main>
-      <section className="market-hero">
-        <div>
-          <span className="hero-badge"><BadgeCheck size={15} /> Production-ready portfolio templates</span>
-          <h1>Launch work that looks unmistakably yours.</h1>
-          <p>Curated, polished portfolio themes with clean source code, thoughtful interactions, and practical setup guides.</p>
-          <div className="hero-actions">
-            <Link className="primary-button" to="/themes">Browse themes <ArrowRight size={18} /></Link>
-            {user && user.role !== "admin" && <Link className="secondary-button" to="/purchases">Your library</Link>}
-          </div>
-          <div className="trust-row"><span><ShieldCheck size={16} /> Secure checkout</span><span><Zap size={16} /> Instant access</span><span><Layers3 size={16} /> Complete source files</span></div>
-        </div>
-        <div className="hero-composition" aria-hidden="true"><div className="composition-card one"><span>Selected work</span><b>Creative direction<br />meets clean code.</b></div><div className="composition-card two"><i /><i /><i /></div><div className="composition-orbit" /></div>
-      </section>
-      <section className="featured-themes">
+      <section className="featured-themes" id="featured-themes">
         <div className="section-heading"><div><span className="eyebrow">Editor’s selection</span><h2>Built to make a strong first impression.</h2></div><Link to="/themes">See every theme <ArrowRight size={17} /></Link></div>
         {error && <ErrorMessage message={error} onDismiss={clearError} />}
         {isLoading && !data ? (

@@ -5,6 +5,7 @@ import ThemeModel from "../models/theme.ts";
 import UploadAssetModel from "../models/upload-asset.ts";
 import { AppError } from "../utils/app-error.ts";
 import { serializeAsset } from "./upload.service.ts";
+import { calculateMarketplaceTaxEstimate } from "./stripe.service.ts";
 
 export async function validDiscount(code?: string) {
   if (!code) return null;
@@ -14,7 +15,7 @@ export async function validDiscount(code?: string) {
   return discount;
 }
 
-export async function getCart(userId: unknown) {
+export async function getCart(userId: unknown, customerIp?: string) {
   const cart = await CartModel.findOne({ userId }).lean();
   type RawCartItem = { themeId: unknown; addedAt: Date };
   type CartViewItem = { themeId: string; name: string; slug: string; priceMinor: number; currency: string; addedAt: Date; previewAsset?: Awaited<ReturnType<typeof serializeAsset>> };
@@ -38,10 +39,18 @@ export async function getCart(userId: unknown) {
   let discount = null;
   if (cart?.discountCode) { try { discount = await validDiscount(cart.discountCode); } catch { await CartModel.updateOne({ userId }, { $unset: { discountCode: 1 } }); } }
   const discountMinor = discount ? Math.floor(subtotalMinor * discount.percentage / 100) : 0;
-  return { items, discountCode: discount?.code, discountPercentage: discount?.percentage, currency, subtotalMinor, discountMinor, totalMinor: subtotalMinor - discountMinor, updatedAt: cart?.updatedAt ?? new Date() };
+  const allocatedDiscounts = items.map((item) => Math.floor(item.priceMinor * (discount?.percentage ?? 0) / 100));
+  if (allocatedDiscounts.length) allocatedDiscounts[allocatedDiscounts.length - 1] = discountMinor - allocatedDiscounts.slice(0, -1).reduce((sum, value) => sum + value, 0);
+  const beforeTaxMinor = subtotalMinor - discountMinor;
+  const tax = await calculateMarketplaceTaxEstimate({
+    items: items.map((item, index) => ({ reference: item.themeId, amountMinor: item.priceMinor - (allocatedDiscounts[index] ?? 0) })),
+    currency,
+    customerIp,
+  });
+  return { items, discountCode: discount?.code, discountPercentage: discount?.percentage, currency, subtotalMinor, discountMinor, ...tax, totalMinor: beforeTaxMinor + tax.taxMinor, updatedAt: cart?.updatedAt ?? new Date() };
 }
 
-export async function addCartItem(userId: unknown, themeId: string) {
+export async function addCartItem(userId: unknown, themeId: string, customerIp?: string) {
   const [theme, owned] = await Promise.all([ThemeModel.findOne({ _id: themeId, status: "published" }), EntitlementModel.exists({ userId, themeId, status: "active" })]);
   if (!theme) throw new AppError(404, "THEME_NOT_FOUND", "Theme not found");
   const sourceReady = theme.sourceAssetId ? await UploadAssetModel.exists({ _id: theme.sourceAssetId, kind: "theme_zip", status: "ready" }) : null;
@@ -50,9 +59,9 @@ export async function addCartItem(userId: unknown, themeId: string) {
   const existing = await CartModel.exists({ userId, "items.themeId": theme._id });
   if (existing) throw new AppError(409, "CART_ITEM_EXISTS", "This theme is already in your cart");
   await CartModel.findOneAndUpdate({ userId }, { $push: { items: { themeId: theme._id, addedAt: new Date(), priceSnapshotMinor: theme.priceMinor } } }, { upsert: true, returnDocument: "after" });
-  return getCart(userId);
+  return getCart(userId, customerIp);
 }
 
-export async function removeCartItem(userId: unknown, themeId: string) { await CartModel.updateOne({ userId }, { $pull: { items: { themeId } } }); return getCart(userId); }
-export async function applyCartDiscount(userId: unknown, code: string) { await validDiscount(code); await CartModel.findOneAndUpdate({ userId }, { $set: { discountCode: code.toUpperCase() } }, { upsert: true }); return getCart(userId); }
-export async function clearCartDiscount(userId: unknown) { await CartModel.updateOne({ userId }, { $unset: { discountCode: 1 } }); return getCart(userId); }
+export async function removeCartItem(userId: unknown, themeId: string, customerIp?: string) { await CartModel.updateOne({ userId }, { $pull: { items: { themeId } } }); return getCart(userId, customerIp); }
+export async function applyCartDiscount(userId: unknown, code: string, customerIp?: string) { await validDiscount(code); await CartModel.findOneAndUpdate({ userId }, { $set: { discountCode: code.toUpperCase() } }, { upsert: true }); return getCart(userId, customerIp); }
+export async function clearCartDiscount(userId: unknown, customerIp?: string) { await CartModel.updateOne({ userId }, { $unset: { discountCode: 1 } }); return getCart(userId, customerIp); }

@@ -1,5 +1,5 @@
 import type { PublicAsset } from "@shared/types";
-import { ChevronLeft, ChevronRight, Expand, ImageOff, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, ImageOff, X } from "lucide-react";
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type TouchEvent } from "react";
 
 function GalleryImage({ asset, alt, eager = false }: { asset: PublicAsset; alt: string; eager?: boolean }) {
@@ -85,7 +85,7 @@ export function ThemeGallery({ images, name }: { images: PublicAsset[]; name: st
             setSelected(index); setExpanded(true);
           }} aria-label={`View ${name} image ${index + 1} full size`}>
             <GalleryImage asset={asset} alt={`${name} — screen ${index + 1}`} eager={Math.abs(index - active) <= 1} />
-            <span className="gallery-expand"><Expand size={16} /><span>View full image</span></span>
+            
           </button>
         </div>)}
       </div>

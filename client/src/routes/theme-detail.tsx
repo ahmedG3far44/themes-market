@@ -3,31 +3,40 @@
 /* oxlint-disable react-hooks/exhaustive-deps */
 import Header from "../components/header";
 
-import { themePreview } from "../lib/theme-media";
-import type { ThemeType } from "@shared/types";
-import { ArrowLeft, ArrowUpRight, Check, Download, Eye, ShoppingBag } from "lucide-react";
-import { useEffect } from "react";
-import { Link, useParams } from "react-router-dom";
-import { ErrorMessage } from "../components/ui/error-message";
-import { Skeleton } from "../components/ui/skeleton";
-import { useAppAuth } from "../context/auth-store";
-import { useCart } from "../context/cart-store";
-import { useAsync } from "../hooks/use-async";
 import { api } from "../lib/api";
-import { Instructions } from "../components/instructions";
-import { ThemeMedia } from "../components/theme-media";
-import { ThemeGallery } from "../components/theme-gallery";
+import { useEffect } from "react";
 import { money } from "../lib/format";
+import { ErrorState } from "./error/error";
+import { useAsync } from "../hooks/use-async";
+import { useCart } from "../context/cart-store";
+import { themePreview } from "../lib/theme-media";
+import { Link, useParams } from "react-router-dom";
+import { useAppAuth } from "../context/auth-store";
+import { Skeleton } from "../components/ui/skeleton";
+import { ThemeMedia } from "../components/theme-media";
+import { Instructions } from "../components/instructions";
+import { ThemeGallery } from "../components/theme-gallery";
+import { ArrowLeft, ArrowUpRight, Check, Download, Eye, ShoppingBag } from "lucide-react";
+
+import type { ThemeType } from "@shared/types";
 
 export default function ThemeDetailPage() {
-  const { slug } = useParams();
-  const request = useAsync<ThemeType>();
   const cart = useCart();
+  const request = useAsync<ThemeType>();
+
+  const { slug } = useParams();
   const { user } = useAppAuth();
 
   useEffect(() => { if (slug) void request.run(api.get<ThemeType>(`/themes/${slug}`)).catch(() => undefined); }, [slug, request.run]);
   if (request.isLoading && !request.data) return <><Header /><main className="detail-page"><Skeleton className="detail-skeleton" /></main></>;
-  if (request.error || !request.data) return <><Header /><main className="centered-state"><ErrorMessage message={request.error ?? "Theme not found"} /><Link to="/themes">Back to themes</Link></main></>;
+  if (request.error || !request.data) return <ErrorState
+    title={request.error ? "We couldn’t load this theme" : "Theme not found"}
+    message={request.error ?? "This theme may have been removed or is no longer published."}
+    backTo="/themes"
+    backLabel="Back to themes"
+    onRetry={slug ? () => void request.run(api.get<ThemeType>(`/themes/${slug}`)).catch(() => undefined) : undefined}
+    retryLabel="Reload theme"
+  />
   const theme = request.data;
 
   return <div className="store-page"><Header /><main className="detail-page">
@@ -66,7 +75,7 @@ export default function ThemeDetailPage() {
         <p>{theme.description}</p>
       </div>
 
-      <div className="detail-preview"><ThemeMedia asset={themePreview(theme)} alt={`Preview of ${theme.name}`} preview /></div>
+      <div className="detail-preview"><ThemeMedia  asset={themePreview(theme)} alt={`Preview of ${theme.name}`} preview /></div>
 
       {theme.images.length > 0 && <section className="detail-section" id="gallery" aria-labelledby="gallery-title">
         <span className="eyebrow">A closer look</span><h2 id="gallery-title">Theme gallery</h2><p>Explore every screen. Select an image to view it full size.</p>

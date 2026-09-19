@@ -13,6 +13,7 @@ import { ToastProvider } from './context/toast-context'
 import { CartProvider } from './context/cart-context'
 import { Spinner } from './components/ui/spinner'
 import Footer from './components/footer'
+import NotFoundPage from './routes/error/not-found'
 
 const InsightsPage = lazy(() => import('./routes/admin/insights'))
 const UsersPage = lazy(() => import('./routes/admin/users'))
@@ -21,6 +22,8 @@ const ThemesPage = lazy(() => import('./routes/themes'))
 const ThemeDetailPage = lazy(() => import('./routes/theme-detail'))
 const CartPage = lazy(() => import('./routes/cart'))
 const PurchasesPage = lazy(() => import('./routes/purchases'))
+const OrdersPage = lazy(() => import('./routes/orders'))
+const CustomerTransactionsPage = lazy(() => import('./routes/transactions'))
 const OrderDetailPage = lazy(() => import('./routes/order-detail'))
 const CheckoutCancel = lazy(() => import('./routes/checkout-cancel'))
 const SignInPage = lazy(() => import('./routes/auth').then((module) => ({ default: module.SignInPage })))
@@ -69,7 +72,9 @@ function App() {
             <Route path='/cart' element={<Protected><CartPage /></Protected>} />
             <Route path='/purchases' element={<Protected customerOnly><PurchasesPage /></Protected>} />
             <Route path='/purchase' element={<Protected customerOnly><PurchasesPage /></Protected>} />
+            <Route path='/orders' element={<Protected customerOnly><OrdersPage /></Protected>} />
             <Route path='/orders/:id' element={<Protected customerOnly><OrderDetailPage /></Protected>} />
+            <Route path='/transactions' element={<Protected customerOnly><CustomerTransactionsPage /></Protected>} />
             <Route path='/checkout/cancel' element={<Protected><CheckoutCancel /></Protected>} />
             <Route path='/admin' element={<Protected adminOnly><AdminLayout /></Protected>}>
               <Route index element={<InsightsPage />} />
@@ -84,11 +89,11 @@ function App() {
               <Route path='orders/:id' element={<AdminOrderDetailPage />} />
               <Route path='discounts' element={<DiscountsPage />} />
             </Route>
-            <Route path='*' element={<main className="centered-state"><h1>Page not found</h1><Link className="primary-button" to="/">Go home</Link></main>} />
-           </Routes><SiteFooter /></Suspense>
-         </CartProvider></ToastProvider>
-       </AuthProvider>
-     </BrowserRouter>
+            <Route path='*' element={<NotFoundPage />} />
+          </Routes><SiteFooter /></Suspense>
+        </CartProvider></ToastProvider>
+      </AuthProvider>
+    </BrowserRouter>
   )
 }
 

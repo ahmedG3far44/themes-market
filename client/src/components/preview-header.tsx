@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { ArrowLeft, ExternalLink, LoaderCircle, Monitor, ShoppingBag, Smartphone, Tablet } from "lucide-react";
+import { ArrowLeft, LoaderCircle, Monitor, ShoppingBag, Smartphone, Tablet } from "lucide-react";
 import type { ThemeType } from "@shared/types";
 import { useCart } from "../context/cart-store";
 import { useAppAuth } from "../context/auth-store";
@@ -65,16 +65,7 @@ export function PreviewHeader({ theme, device, onDeviceChange, onCheckout }: Pre
           <span className="preview-back-sep">·</span>
           <span className="preview-theme-name">{theme.name}</span>
         </Link>
-        <a
-          href={theme.previewUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="preview-external-link"
-          aria-label="Open live preview in new tab"
-          title="Open in new tab"
-        >
-          <ExternalLink size={14} />
-        </a>
+
       </div>
 
       <div className="preview-device-switch" role="group" aria-label="Preview device size">

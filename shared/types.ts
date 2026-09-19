@@ -153,6 +153,9 @@ export interface CartType {
   discountPercentage?: number;
   subtotalMinor: number;
   discountMinor: number;
+  taxMinor: number;
+  taxPercentage?: number;
+  taxStatus: "estimated" | "calculated_at_checkout";
   totalMinor: number;
   currency: string;
   updatedAt: string;

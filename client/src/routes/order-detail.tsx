@@ -8,6 +8,7 @@ import { ArrowLeft, Download, ReceiptText } from "lucide-react";
 import { useEffect } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ErrorMessage } from "../components/ui/error-message";
+import { ErrorState } from "./error/error";
 import { Spinner } from "../components/ui/spinner";
 import { useAsync } from "../hooks/use-async";
 import { api, saveApiFile } from "../lib/api";
@@ -23,6 +24,15 @@ export default function OrderDetailPage() {
         if (id) void request.run(api.get<OrderType>(`/orders/${id}`)).catch(() => undefined);
     }, [id, request.run]);
 
+    if (request.error || (!request.isLoading && !request.data)) return <ErrorState
+        title={request.error ? "We couldn’t load this order" : "Order not found"}
+        message={request.error ?? "This order may no longer exist or you may not have access to it."}
+        onRetry={id ? () => void request.run(api.get<OrderType>(`/orders/${id}`)).catch(() => undefined) : undefined}
+        retryLabel="Reload order"
+        backTo="/purchases"
+        backLabel="Back to your library"
+    />;
+
     return <div className="store-page">
         <Header />
         <main className="mx-auto max-w-[1180px] w-full mb-20">
@@ -31,9 +41,7 @@ export default function OrderDetailPage() {
                 <ArrowLeft size={16} />Your library</Link>
             {request.isLoading && !request.data ?
                 <div className="page-loader"><Spinner size="md" /></div>
-                : request.error || !request.data ?
-                    <ErrorMessage message={request.error ?? "Order not found"} />
-                    : <article className="receipt">
+                : request.data && <article className="receipt">
                         <header>
                             <div className="receipt-icon"><ReceiptText /></div>
                             <div>

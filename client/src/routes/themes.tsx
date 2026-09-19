@@ -5,7 +5,7 @@ import { Search, SlidersHorizontal } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import Header from "../components/header";
 import { ThemeCard } from "../components/theme-card";
-import { ErrorMessage } from "../components/ui/error-message";
+import { ErrorState } from "./error/error";
 import { Skeleton } from "../components/ui/skeleton";
 import { useAppAuth } from "../context/auth-store";
 import { useCart } from "../context/cart-store";
@@ -28,6 +28,15 @@ export default function ThemesPage() {
   useEffect(() => { void load(); }, [load]);
   const search = (event: FormEvent) => { event.preventDefault(); setFilters((value) => ({ ...value, search: draft, page: 1 })); };
 
+  if (request.error) return <ErrorState
+    title="We couldn’t load the theme library"
+    message={request.error}
+    onRetry={() => void load()}
+    retryLabel="Reload themes"
+    backTo="/"
+    backLabel="Back to home"
+  />;
+
   return <div className="store-page">
     <Header />
     <main className="catalog-page">
@@ -40,7 +49,6 @@ export default function ThemesPage() {
           <select value={filters.sort} onChange={(event) => setFilters((value) => ({ ...value, sort: event.target.value, page: 1 }))}><option value="newest">Newest</option><option value="popular">Most popular</option><option value="price_asc">Price: low to high</option><option value="price_desc">Price: high to low</option></select>
         </div>
       </div>
-      {request.error && <ErrorMessage message={request.error} onDismiss={request.clearError} />}
       {request.isLoading && !request.data ? (
         <div className="theme-grid">{[1, 2, 3, 4, 5, 6].map((number) => <Skeleton className="theme-card-skeleton" key={number} />)}</div>
       ) : request.data?.items.length ? <>

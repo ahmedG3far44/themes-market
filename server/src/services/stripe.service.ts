@@ -40,6 +40,34 @@ export function validateStripeCheckoutAmounts(session: StripeAmountSnapshot, exp
   return { subtotalMinor: subtotal, taxMinor: tax, totalMinor: total, currency };
 }
 
+export async function calculateMarketplaceTaxEstimate(input: { items: Array<{ reference: string; amountMinor: number }>; currency: string; customerIp?: string }) {
+  const taxableItems = input.items.filter((item) => Number.isInteger(item.amountMinor) && item.amountMinor > 0);
+  const taxableMinor = taxableItems.reduce((sum, item) => sum + item.amountMinor, 0);
+  const rawIp = input.customerIp?.split(",")[0]?.trim().replace(/^::ffff:/, "");
+  const usableIp = rawIp && !["::1", "127.0.0.1", "localhost"].includes(rawIp) ? rawIp : undefined;
+
+  if (!taxableMinor) return { taxMinor: 0, taxPercentage: 0, taxStatus: "estimated" as const };
+  if (!env.STRIPE_SECRET_KEY || !usableIp) return { taxMinor: 0, taxStatus: "calculated_at_checkout" as const };
+
+  try {
+    const calculation = await stripeClient().tax.calculations.create({
+      currency: input.currency.toLowerCase(),
+      customer_details: { ip_address: usableIp },
+      line_items: taxableItems.map((item) => ({
+        amount: item.amountMinor,
+        reference: item.reference,
+        tax_behavior: "exclusive",
+        tax_code: "txcd_10202003",
+      })),
+    });
+    const taxMinor = calculation.tax_amount_exclusive;
+    const taxPercentage = Number(((taxMinor / taxableMinor) * 100).toFixed(2));
+    return { taxMinor, taxPercentage, taxStatus: "estimated" as const };
+  } catch {
+    return { taxMinor: 0, taxStatus: "calculated_at_checkout" as const };
+  }
+}
+
 function stripeClient(): Stripe {
   if (!env.STRIPE_SECRET_KEY) throw new Error("Stripe is not configured. Set STRIPE_SECRET_KEY");
   return new Stripe(env.STRIPE_SECRET_KEY);
@@ -57,6 +85,8 @@ export async function createMarketplaceStripeCheckout(input: MarketplaceCheckout
   const session = await stripeClient().checkout.sessions.create({
     mode: "payment",
     customer_email: input.customerEmail,
+    billing_address_collection: "required",
+    automatic_tax: { enabled: true },
     line_items: input.items.map((item) => ({
       price_data: {
         currency: input.currency.toLowerCase(), unit_amount: item.unitAmountMinor,

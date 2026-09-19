@@ -9,6 +9,7 @@ import { Spinner } from "../../components/ui/spinner";
 import { useAsync } from "../../hooks/use-async";
 import { api, saveApiFile } from "../../lib/api";
 import { dateTime, money } from "../../lib/format";
+import { ErrorState } from "../error/error";
 
 interface AdminOrder extends OrderType { user: Pick<IUser, "name" | "email" | "provider"> }
 
@@ -28,9 +29,14 @@ export default function AdminOrderDetailPage() {
     <div className="page-loader"><Spinner size="md" /></div>
   </main>;
 
-  if (request.error || !order) return <main className="admin-page">
-    <ErrorMessage message={request.error ?? "Order not found"} />
-  </main>;
+  if (request.error || !order) return <ErrorState
+    title={request.error ? "We couldn’t load this order" : "Order not found"}
+    message={request.error ?? "This marketplace order may no longer exist."}
+    onRetry={id ? () => void request.run(api.get(`/admin/orders/${id}`)).catch(() => undefined) : undefined}
+    retryLabel="Reload order"
+    backTo="/admin/orders"
+    backLabel="Back to marketplace orders"
+  />;
 
   return <main className="admin-page">
     <Link className="back-link" to="/admin/orders">

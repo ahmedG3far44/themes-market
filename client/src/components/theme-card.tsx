@@ -1,9 +1,10 @@
-import { themePreview } from "../lib/theme-media";
-import type { ThemeType } from "@shared/types";
-import { Download, LoaderCircle, ShoppingBag, ShoppingCart } from "lucide-react";
-import { Link } from "react-router-dom";
-import { ThemeMedia } from "./theme-media";
 import { money } from "../lib/format";
+import { Link, useNavigate } from "react-router-dom";
+import { ThemeMedia } from "./theme-media";
+import { themePreview } from "../lib/theme-media";
+import { Eye, FileDown, LoaderCircle, ShoppingBag, ShoppingCart } from "lucide-react";
+
+import type { ThemeType } from "@shared/types";
 
 interface ThemeCardProps {
   theme: ThemeType;
@@ -13,55 +14,92 @@ interface ThemeCardProps {
   adding?: boolean;
 }
 
+
+const actionBase =
+  "inline-flex min-h-8 min-w-[112px] items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-neutral-200 bg-white px-3.5 py-1.5 text-xs font-medium leading-none text-neutral-800 transition-all duration-150 hover:border-neutral-300 hover:bg-neutral-50 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60";
+
 export function ThemeCard({ theme, inCart = false, isAdmin = false, onAdd, adding = false }: ThemeCardProps) {
+
+  const navigate = useNavigate();
+
   const purchaseAction = theme.purchased ? (
-    <Link className="secondary-button theme-card-action" to="/purchases" aria-label={`Download ${theme.name}`}><Download size={16} />Download</Link>
+    <Link className={actionBase} to="/purchases" aria-label={`Download ${theme.name}`}>
+      <FileDown size={14} strokeWidth={2.25} />
+      Download
+    </Link>
   ) : inCart ? (
-    <Link className="secondary-button theme-card-action" to="/cart"><ShoppingCart size={16} />View cart</Link>
+    <Link className={actionBase} to="/cart">
+      <ShoppingCart size={14} strokeWidth={2.25} />
+      View cart
+    </Link>
   ) : isAdmin ? null : theme.canPurchase === false ? (
-    <button className="secondary-button theme-card-action" type="button" disabled title="Download package coming soon"><ShoppingBag size={16} />Coming soon</button>
+    <button className={actionBase} type="button" disabled title="Download package coming soon">
+      <ShoppingBag size={14} strokeWidth={2.25} />
+      Coming soon
+    </button>
   ) : onAdd ? (
-    <button className="secondary-button theme-card-action" type="button" disabled={adding} aria-busy={adding} onClick={() => onAdd(theme.id)}>
-      {adding ? <LoaderCircle className="theme-card-loading" size={16} /> : <ShoppingBag size={16} />}
+    <button
+      className={actionBase}
+      type="button"
+      disabled={adding}
+      aria-busy={adding}
+      onClick={() => onAdd(theme.id)}
+    >
+      {adding ? <LoaderCircle className="animate-spin" size={14} strokeWidth={2.25} /> : <ShoppingBag size={14} strokeWidth={2.25} />}
       {adding ? "Adding…" : "Add to cart"}
     </button>
   ) : (
-    <Link className="secondary-button theme-card-action" to="/sign-in"><ShoppingBag size={16} />Add to cart</Link>
+    <Link className={actionBase} to="/sign-in">
+      <ShoppingBag size={14} strokeWidth={2.25} />
+      Add to cart
+    </Link>
   );
 
   void theme.stack;
 
-  return <article className="theme-card">
+  return (
+    <article className="group  overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm transition-shadow duration-200 hover:shadow-md">
 
-    <Link className="theme-card-visual" to={`/themes/${theme.slug}`} aria-label={`View ${theme.name}`}>
-    
-      <ThemeMedia asset={themePreview(theme)} alt={`Preview of ${theme.name}`} preview />
-      {/* <span className="theme-card-view-label" aria-hidden="true">View theme <ArrowUpRight size={15} /></span> */}
 
-      {/* {(theme.featured || theme.purchased) && <span className="theme-card-badges" aria-hidden="true">
-        {theme.featured && <span className="theme-card-badge"><Sparkles size={13} />Featured</span>}
-        {theme.purchased && <span className="theme-card-badge owned"><CheckCircle2 size={13} />Owned</span>}
-      </span>} */}
-    </Link>
+      <div
+        className="block aspect-[4/3] w-full overflow-hidden relative">
 
-    <div className="theme-card-body">
-      {/* <ul className="theme-card-tags" aria-label="Technology stack">
-        {visibleStack.map((item) => <li key={item}>{item}</li>)}
-        {remainingStackCount > 0 && <li title={theme.stack.slice(3).join(", ")}>+{remainingStackCount}</li>}
-      </ul> */}
+        <button
+          type="button"
+          aria-label={`Preview ${theme.name}`}
+          onClick={() => navigate(`/themes/${theme.slug}/preview`)}
+          className="theme-preview-action opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+        >
+          <span className="theme-preview-tooltip" aria-hidden="true">Preview</span>
+          <Eye size={18} strokeWidth={2.15} />
+        </button>
 
-      <h3><Link className="theme-card-title" to={`/themes/${theme.slug}`}>{theme.name}</Link></h3>
-      {/* <p className="theme-card-description">{theme.shortDescription}</p> */}
+        <ThemeMedia
+          asset={themePreview(theme)}
+          alt={`Preview of ${theme.name}`}
+          preview
+          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03] bg-gradient-to-b from-[#d4a8dd] via-[#b8a8dc] to-[#9db4dc]"
+        />
+      </div>
 
-      <div className="theme-card-footer">
-        
-        <div className="theme-card-price">
-          {/* <span>One-time price</span> */}
-          <strong>{money(theme.priceMinor, theme.currency)}</strong>
+      <div className="flex items-center justify-between gap-3 px-4 py-3">
+
+        <div className="min-w-0">
+          <h3 className="truncate">
+            <Link
+              className="text-[15px] font-semibold leading-tight text-neutral-900 hover:text-neutral-600 hover:underline"
+              to={`/themes/${theme.slug}`}
+            >
+              {theme.name}
+            </Link>
+          </h3>
+          <span className="text-[13px] font-medium tracking-tight text-neutral-500">
+            {money(theme.priceMinor, theme.currency)}
+          </span>
         </div>
 
         {purchaseAction}
       </div>
-    </div>
-  </article>;
+    </article>
+  );
 }

@@ -1,16 +1,17 @@
 /* useAsync.run is stable across renders. */
 /* oxlint-disable react-hooks/exhaustive-deps */
-import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import type { ThemeType } from "@shared/types";
-import { ExternalLink } from "lucide-react";
-import { ErrorMessage } from "../components/ui/error-message";
-import { Spinner } from "../components/ui/spinner";
-import { PreviewHeader, type PreviewDevice } from "../components/preview-header";
-import { useAppAuth } from "../context/auth-store";
-import { useCart } from "../context/cart-store";
-import { useAsync } from "../hooks/use-async";
 import { api } from "../lib/api";
+import { useEffect, useState } from "react";
+import { ExternalLink } from "lucide-react";
+import { useAsync } from "../hooks/use-async";
+import { useCart } from "../context/cart-store";
+import { useAppAuth } from "../context/auth-store";
+import { Spinner } from "../components/ui/spinner";
+import { ErrorState } from "./error/error";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { PreviewHeader, type PreviewDevice } from "../components/preview-header";
+
+import type { ThemeType } from "@shared/types";
 
 const DEVICE_WIDTH: Record<PreviewDevice, string> = {
   mobile: "375px",
@@ -22,8 +23,10 @@ export default function ThemePreviewPage() {
   const { slug } = useParams<{ slug: string }>();
   const request = useAsync<ThemeType>();
   const cart = useCart();
-  const { user } = useAppAuth();
   const navigate = useNavigate();
+
+  const { user } = useAppAuth();
+
   const [device, setDevice] = useState<PreviewDevice>("desktop");
   const [iframeError, setIframeError] = useState(false);
   const [iframeLoaded, setIframeLoaded] = useState(false);
@@ -84,21 +87,14 @@ export default function ThemePreviewPage() {
   }
 
   if (request.error || !theme) {
-    return (
-      <div className="preview-page">
-        <div className="preview-error">
-          <ErrorMessage message={request.error ?? "Theme not found"} />
-          <div className="preview-error-actions">
-            <Link className="secondary-button" to={slug ? `/themes/${slug}` : "/themes"}>
-              Back to details
-            </Link>
-            <Link className="primary-button" to="/themes">
-              Browse themes
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
+    return <ErrorState
+      title={request.error ? "We couldn’t load this preview" : "Theme not found"}
+      message={request.error ?? "This theme preview is no longer available."}
+      onRetry={slug ? () => void request.run(api.get<ThemeType>(`/themes/${slug}`)).catch(() => undefined) : undefined}
+      retryLabel="Reload preview"
+      backTo={slug ? `/themes/${slug}` : "/themes"}
+      backLabel={slug ? "Back to theme details" : "Browse themes"}
+    />;
   }
 
   if (!theme.previewUrl) {
@@ -189,13 +185,11 @@ export default function ThemePreviewPage() {
         )}
       </div>
 
-      <div className="preview-footer-meta" aria-hidden="true">
+      <div className="flex  justify-center text-xs py-2 border-t border-zinc-200" aria-hidden="true">
         <span>
           Viewing <strong>{theme.name}</strong> · {device} · {frameWidth}
         </span>
-        <a href={theme.previewUrl} target="_blank" rel="noreferrer">
-          Open original <ExternalLink size={12} />
-        </a>
+
       </div>
     </div>
   );

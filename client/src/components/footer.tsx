@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import type { SiteContentType } from "@shared/types";
 import { api } from "../lib/api";
+import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+
+import type { SiteContentType } from "@shared/types";
+import { Logo } from "./header";
 
 export default function Footer() {
   const year = new Date().getFullYear();
@@ -30,26 +32,26 @@ export default function Footer() {
         <div className="footer-grid">
           {/* Brand + description + socials */}
           <div className="footer-brand-col">
-            <Link className="brand" to="/">PORTFOLIO <span>MARKET</span></Link>
+            <Logo />
             <p className="footer-desc">
               Curated portfolio themes for creators, designers and developers. Production-ready templates with clean code, thoughtful interactions and practical guides to launch fast.
             </p>
             <div className="footer-socials" aria-label="Social media">
-
-
-              <>
-                <Link to={socials ? socials.instagram : "#"} target="_blank" rel="noreferrer" aria-label="Instagram">
-                  <img src="./instagram.png" width={20} height={20} />
-                </Link>
-
-                <Link to={socials ? socials.youtube : "#"} target="_blank" rel="noreferrer" aria-label="YouTube Shorts">
-                  <img src="./youtube-shorts.png" width={20} height={20} />
-                </Link>
-                <Link to={socials ? socials.tiktok : "#"} target="_blank" rel="noreferrer" aria-label="Tiktok">
-                  <img src="./tiktok.png" width={20} height={20} />
-                </Link>
-              </>
-
+              {socials.instagram && (
+                <a href={socials.instagram} target="_blank" rel="noreferrer" aria-label="Instagram">
+                  <img src="/instagram.png" alt="" width={20} height={20} />
+                </a>
+              )}
+              {socials.youtube && (
+                <a href={socials.youtube} target="_blank" rel="noreferrer" aria-label="YouTube Shorts">
+                  <img src="/youtube-shorts.png" alt="" width={20} height={20} />
+                </a>
+              )}
+              {socials.tiktok && (
+                <a href={socials.tiktok} target="_blank" rel="noreferrer" aria-label="TikTok">
+                  <img src="/tiktok.png" alt="" width={20} height={20} />
+                </a>
+              )}
             </div>
           </div>
 
@@ -77,10 +79,10 @@ export default function Footer() {
               <div className="payment-provider-block">
 
                 <div className="payment-badges" aria-label="Stripe payment methods">
-                  <span className="pay-badge" title="Visa"> <img src="./visa.png" width={20} height={20} /></span>
-                  <span className="pay-badge" title="Mastercard"> <img src="./mastercard.png" width={20} height={20} /></span>
-                  <span className="pay-badge" title="Google Pay"> <img src="./google.png" width={20} height={20} /> </span>
-                  <span className="pay-badge" title="Apple Pay"> <img src="./apple.png" width={20} height={20} /> </span>
+                  <span className="pay-badge" title="Visa"><img src="/visa.png" alt="Visa" width={20} height={20} /></span>
+                  <span className="pay-badge" title="Mastercard"><img src="/mastercard.png" alt="Mastercard" width={20} height={20} /></span>
+                  <span className="pay-badge" title="Google Pay"><img src="/google.png" alt="Google Pay" width={20} height={20} /></span>
+                  <span className="pay-badge" title="Apple Pay"><img src="/apple.png" alt="Apple Pay" width={20} height={20} /></span>
                 </div>
               </div>
             </div>
