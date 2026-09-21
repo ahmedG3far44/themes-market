@@ -21,7 +21,7 @@ Customers can:
 * inspect theme features, technology stack, screenshots, videos, and price.
 * Open an externally hosted live demo.
 * Add themes to a cart.
-* Apply a discount code.
+* Apply eligible Stripe-managed promotions during Checkout.
 * Complete payment using Stripe Checkout.
 * Access purchased themes from their account.
 * Download each purchased theme up to five times.
@@ -29,10 +29,10 @@ Customers can:
 Administrators can:
 
 * Manage themes and their media/source files.
-* Monitor orders, sales, discounts, and revenue.
+* Monitor orders, sales, Stripe promotions, and revenue.
 * View sales performance for individual themes.
 * Search, filter, block, and activate users.
-* Create and manage discount codes.
+* Send marketing offers to selected active customers.
 * Upload private theme ZIP files and public theme media to AWS S3.
 
 This MVP is a single-vendor store. It does not allow third-party creators to publish themes or receive payouts.
@@ -48,7 +48,7 @@ This MVP is a single-vendor store. It does not allow third-party creators to pub
 * Prevent customers from purchasing the same theme twice.
 * Limit each purchase to five download requests.
 * Provide accurate, filterable sales analytics.
-* Give administrators complete control over users, themes, media, orders, and discounts.
+* Give administrators complete control over users, themes, media, orders, and promotional email campaigns.
 * Make payment fulfillment reliable and idempotent.
 * Establish an architecture that can support more digital products later.
 
@@ -59,7 +59,7 @@ This MVP is a single-vendor store. It does not allow third-party creators to pub
 * Download success rate.
 * Revenue and paid order count.
 * Sales per theme.
-* Discount-code usage.
+* Promotional email delivery success.
 * Checkout failure rate.
 * Upload processing failure rate.
 * Unauthorized download attempts.
@@ -84,7 +84,7 @@ This MVP is a single-vendor store. It does not allow third-party creators to pub
 | -------- | -------------------------------------------------------------------------- |
 | Visitor  | Browse, search, filter, view theme details, and open demos                 |
 | Customer | Visitor capabilities plus cart, checkout, orders, purchases, and downloads |
-| Admin    | Manage themes, users, orders, discounts, uploads, and analytics            |
+| Admin    | Manage themes, users, orders, promotional email, uploads, and analytics    |
 
 User authorization must always be enforced by the Express API. Hiding admin UI elements is not sufficient authorization.
 
@@ -295,7 +295,6 @@ Customers can:
 * Add an unowned theme.
 * Remove a theme.
 * View subtotal.
-* Apply or remove one discount code.
 * Continue to Stripe Checkout.
 
 Rules:
@@ -311,7 +310,7 @@ Rules:
 1. The customer clicks Checkout.
 2. The API authenticates the customer and verifies account status.
 3. The API reloads themes and prices from MongoDB.
-4. Ownership, publication status, and discounts are validated.
+4. Ownership, publication status, and prices are validated.
 5. The API creates a Stripe Checkout Session.
 6. The customer completes payment on Stripe.
 7. Stripe sends a signed webhook.
@@ -459,22 +458,11 @@ For every theme, admins can see:
 * Date-filtered performance.
 * Recent customers and orders.
 
-### 7.5 Discount codes
+### 7.5 Promotions and event email
 
-Admins can:
+Admins can select active customers, enter offer copy and a call-to-action, and send a branded promotion email. Actual promotion codes, eligibility rules, and discounts are configured and applied only in Stripe. The same admin page can send welcome, invoice, refund, and promotion templates to a specified address using dummy data.
 
-* Enter or securely generate a code.
-* Set the percentage.
-* Set an optional start date.
-* Set an expiration date.
-* Activate or deactivate the code.
-* Set an optional usage limit.
-* View redemption count.
-* Edit future behavior.
-* Delete unused codes.
-* Search and filter codes.
-
-Completed orders retain their original discount snapshot even if a code is later edited or deleted.
+The system also sends a welcome email on a customer's first login, a PDF invoice after a verified successful payment, and a refund confirmation after Stripe confirms a full refund.
 
 ---
 
@@ -504,8 +492,8 @@ Completed orders retain their original discount snapshot even if a code is later
 | MEDIA-001 | Upload images, videos, and ZIP     |     Must | Type, size, authorization, and status are validated            |
 | MEDIA-002 | Optimize images with Sharp         |     Must | Metadata is stripped and optimized variants created            |
 | MEDIA-003 | Show upload state                  |     Must | UI displays preparing, uploading, processing, ready, or failed |
-| DISC-001  | Generate and manage discounts      |     Must | Unique codes can be created, edited, and deactivated           |
-| DISC-002  | Validate discounts server-side     |     Must | Expired/inactive codes cannot reduce checkout totals           |
+| EMAIL-001 | Send event-specific email          |     Must | Welcome, invoice, refund, and promotion templates are distinct |
+| EMAIL-002 | Send selected promotions           |     Must | Only selected active customers receive the admin-authored offer |
 | ANA-001   | Dashboard date filtering           |     Must | All metrics use the same selected interval                     |
 | ANA-002   | Track sales per theme              |     Must | Units and paid totals match order-item aggregation             |
 | AUD-001   | Audit sensitive admin actions      |   Should | Actor, action, target, and timestamp are stored                |
@@ -540,7 +528,7 @@ Completed orders retain their original discount snapshot even if a code is later
 | `/admin/orders`          | Order management                |
 | `/admin/orders/:orderId` | Order details                   |
 | `/admin/users`           | User management                 |
-| `/admin/discounts`       | Discount management             |
+| `/admin/promotions`      | Promotion email composer        |
 
 ---
 
@@ -615,7 +603,6 @@ Indexes:
     themeId: ObjectId;
     addedAt: Date;
   }];
-  discountCode?: string;
   updatedAt: Date;
 }
 ```
@@ -692,28 +679,6 @@ Indexes:
 
 The entitlement references the purchased source version. Replacing a theme ZIP must not silently modify previous customers’ purchased artifact unless this is an explicit product policy.
 
-### Discount
-
-```ts
-{
-  code: string;
-  percentage: number;
-  startsAt?: Date;
-  expiresAt: Date;
-  active: boolean;
-  usageLimit?: number;
-  redemptionCount: number;
-  createdBy: ObjectId;
-  createdAt: Date;
-  updatedAt: Date;
-}
-```
-
-Indexes:
-
-* Unique normalized code.
-* `{ active: 1, startsAt: 1, expiresAt: 1 }`.
-
 ### UploadAsset
 
 ```ts
@@ -770,8 +735,6 @@ Base path:
 | GET    | `/cart`                | Get current cart               |
 | POST   | `/cart/items`          | Add a theme                    |
 | DELETE | `/cart/items/:themeId` | Remove a theme                 |
-| POST   | `/cart/discount`       | Validate/apply discount        |
-| DELETE | `/cart/discount`       | Remove discount                |
 | POST   | `/checkout/sessions`   | Create Stripe Checkout Session |
 
 ### Purchases
@@ -809,10 +772,8 @@ The Stripe route must receive the raw request body before JSON parsing.
 | PATCH  | `/admin/themes/:id`           | Update theme               |
 | POST   | `/admin/themes/:id/publish`   | Publish theme              |
 | DELETE | `/admin/themes/:id`           | Archive theme              |
-| POST   | `/admin/discounts`            | Create discount            |
-| GET    | `/admin/discounts`            | List discounts             |
-| PATCH  | `/admin/discounts/:id`        | Update discount            |
-| DELETE | `/admin/discounts/:id`        | Delete/deactivate discount |
+| POST   | `/admin/emails/promotions`    | Send a selected promotion campaign |
+| POST   | `/admin/emails/test`          | Send a template with dummy data |
 | POST   | `/admin/uploads`              | Initialize upload          |
 | POST   | `/admin/uploads/:id/parts`    | Sign multipart parts       |
 | POST   | `/admin/uploads/:id/complete` | Finalize upload            |
@@ -859,7 +820,7 @@ The webhook handler must:
 5. Validate payment status and expected currency/amount.
 6. Create or transition the order to `paid`.
 7. Create entitlements using unique indexes.
-8. Increment discount redemption once.
+8. Send the idempotent invoice email with its PDF attachment.
 9. Clear purchased cart items.
 10. Mark the webhook event processed.
 
@@ -872,7 +833,8 @@ Relevant events:
 * `checkout.session.completed`.
 * `checkout.session.async_payment_succeeded`.
 * `checkout.session.async_payment_failed`.
-* Refund/chargeback events when revocation policy is implemented.
+* `checkout.session.expired`.
+* `charge.refunded`, `refund.created`, and `refund.updated` for successful full refunds.
 
 ---
 
@@ -982,7 +944,7 @@ Use a Redis-backed distributed store in production. An in-memory store is accept
 | Cart mutations         |                    60 requests/minute/user |
 | Checkout creation      |                 5 requests/10 minutes/user |
 | Checkout IP protection |                        20 requests/hour/IP |
-| Discount validation    |                20 requests/10 minutes/user |
+| Email template testing |                20 requests/minute/admin |
 | Download generation    |                10 requests/10 minutes/user |
 | Admin mutations        |                     60 requests/hour/admin |
 | Upload initialization  |                     20 requests/hour/admin |
@@ -1065,9 +1027,6 @@ The seed should:
 * `THEME_ALREADY_OWNED`
 * `CART_EMPTY`
 * `CART_CHANGED`
-* `DISCOUNT_INVALID`
-* `DISCOUNT_EXPIRED`
-* `DISCOUNT_USAGE_LIMIT_REACHED`
 * `CHECKOUT_CONFLICT`
 * `PAYMENT_PENDING`
 * `ORDER_NOT_FOUND`
@@ -1091,8 +1050,6 @@ The seed should:
 | Two webhooks process together                  | Unique indexes and transaction prevent duplication              |
 | Duplicate Checkout sessions                    | Only one entitlement can be created                             |
 | Purchase redirect arrives before webhook       | Show payment-processing state and poll                          |
-| Discount expires before checkout creation      | Reject and recalculate total                                    |
-| Discount expires after Stripe session creation | Existing session preserves its validated snapshot               |
 | Account blocked after payment                  | Order remains recorded; download policy requires admin decision |
 | Fifth and sixth downloads arrive together      | Atomic condition permits only one if four were already used     |
 | Theme ZIP is updated                           | Existing entitlement uses purchased asset/version by default    |
@@ -1141,7 +1098,7 @@ And downloadsUsed equals five
 Given a Stripe event has already been processed
 When Stripe sends the same event again
 Then the API returns a successful response
-And no duplicate order, entitlement, or discount redemption is created
+And no duplicate order, entitlement, invoice email, or refund email is created
 ```
 
 ### Blocked customer
@@ -1227,7 +1184,7 @@ Target WCAG 2.2 AA:
 
 * Zod schemas.
 * Pricing calculations.
-* Discount eligibility.
+* Email template rendering and escaping.
 * Permission policies.
 * Download-limit logic.
 * Date-range calculation.
@@ -1241,7 +1198,7 @@ Target WCAG 2.2 AA:
 * Cart revalidation.
 * Stripe webhook processing.
 * Webhook replay.
-* Discount redemption.
+* Stripe promotion reconciliation and full-refund handling.
 * S3 presigning.
 * Admin role and status mutations.
 
@@ -1327,7 +1284,7 @@ Production should prefer workload roles or short-lived AWS credentials instead o
 | 1. Foundation    | Monorepo, React, Express, MongoDB, Clerk, Zod, error handling     |
 | 2. Catalog       | Theme model, catalog, details page, search and filters            |
 | 3. Admin catalog | Theme CRUD, S3 uploads, Sharp processing, publication             |
-| 4. Commerce      | Cart, discounts, Stripe Checkout, webhook fulfillment             |
+| 4. Commerce      | Cart, Stripe Checkout promotions, webhook fulfillment             |
 | 5. Ownership     | Purchases, entitlements, secure downloads, download limits        |
 | 6. Operations    | Users, orders, theme sales, analytics and date filters            |
 | 7. Hardening     | Rate limits, auditing, scanning, accessibility, SEO, load testing |

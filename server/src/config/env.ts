@@ -21,7 +21,12 @@ const env = {
   STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET ?? process.env.STRIPE_WEBHOOK_SECRETS ?? "",
 
   RESEND_API_KEY: process.env.RESEND_API_KEY ?? "",
-  EMAIL_FROM: process.env.EMAIL_FROM ?? "My SaaS <onboarding@example.com>",
+  EMAIL_FROM_ACCOUNT: process.env.EMAIL_FROM_ACCOUNT ?? "Foliokit Account <account@foliokit.store>",
+  EMAIL_FROM_BILLING: process.env.EMAIL_FROM_BILLING ?? "Foliokit Billing <billing@foliokit.store>",
+  EMAIL_FROM_MARKETING: process.env.EMAIL_FROM_MARKETING ?? "Foliokit Offers <offers@foliokit.store>",
+  EMAIL_REPLY_TO: process.env.EMAIL_REPLY_TO ?? "support@foliokit.store",
+  EMAIL_UNSUBSCRIBE_SECRET: process.env.EMAIL_UNSUBSCRIBE_SECRET ?? "",
+  BUSINESS_ADDRESS: process.env.BUSINESS_ADDRESS ?? "",
 
   R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? "",
   R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID ?? "",

@@ -13,6 +13,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
   useEffect(() => { if (canPurchase) void refresh().catch(() => undefined); else { setCart(null); setError(null); } }, [canPurchase, refresh]);
   const mutate = useCallback(async (promise: Promise<CartType>, message?: string) => { setLoading(true); try { setCart(await promise); if (message) notify(message); } finally { setLoading(false); } }, [notify]);
   const activeCart = canPurchase ? cart : null;
-  const value = useMemo<CartState>(() => ({ cart: activeCart, error, isLoading, count: activeCart?.items.length ?? 0, refresh, add: (id) => mutate(api.post<CartType>("/cart/items", { themeId: id }), "Added to cart"), remove: (id) => mutate(api.delete<CartType>(`/cart/items/${id}`), "Removed from cart"), applyDiscount: (code) => mutate(api.post<CartType>("/cart/discount", { code }), "Discount applied"), clearDiscount: () => mutate(api.delete<CartType>("/cart/discount")) }), [activeCart, error, isLoading, refresh, mutate]);
+  const value = useMemo<CartState>(() => ({ cart: activeCart, error, isLoading, count: activeCart?.items.length ?? 0, refresh, add: (id) => mutate(api.post<CartType>("/cart/items", { themeId: id }), "Added to cart"), remove: (id) => mutate(api.delete<CartType>(`/cart/items/${id}`), "Removed from cart") }), [activeCart, error, isLoading, refresh, mutate]);
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }

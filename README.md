@@ -1,6 +1,6 @@
 # Portfolio Theme Marketplace
 
-A single-vendor marketplace for production-ready portfolio templates. Visitors browse published themes, customers buy securely through Stripe, and administrators manage themes, users, orders, discounts, uploads, and revenue analytics.
+A single-vendor marketplace for production-ready portfolio templates. Visitors browse published themes, customers buy securely through Stripe, and administrators manage themes, users, orders, email promotions, uploads, and revenue analytics.
 
 ## Run locally with Docker
 
@@ -84,13 +84,21 @@ The seed is idempotent and deliberately fails if it cannot resolve a real Clerk 
 - Run `npm run r2:setup` from `server` once with R2 Admin Read & Write credentials to configure browser upload CORS for `CLIENT_URL` and expose the `ETag` header. You can replace them with bucket-scoped Object Read & Write credentials afterward.
 - With Docker, use `docker compose exec api npm run r2:setup:compiled` locally or add `-f compose.prod.yaml` immediately after `docker compose` in production.
 - The R2 bucket stays private. The API returns temporary signed preview URLs for images and videos; theme ZIP keys are never returned, and downloads always use shorter-lived signed URLs.
-- Set Stripe's webhook endpoint to `POST /api/v1/webhooks/stripe` for `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, and `checkout.session.expired`.
+- Set Stripe's webhook endpoint to `POST /api/v1/webhooks/stripe` for `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, `charge.refunded`, `refund.created`, and `refund.updated`.
 - Only a verified Stripe webhook with the expected amount and currency grants entitlements. Stripe returns customers to `/purchase`, which shows a processing state and polls until the webhook marks the order paid.
 - Paid customers can download an invoice from `GET /api/v1/orders/:id/invoice`; administrators can use `GET /api/v1/admin/orders/:id/invoice`. Pending, failed, and refunded orders do not produce invoices.
 
 ## Admin workspace
 
-The `/admin` workspace includes paid-order insights, account access/role management, portfolio theme drafting and publishing, multipart asset uploads, marketplace order inspection, percentage discounts, and the existing subscription-plan/legacy-transaction tools. Themes with paid sales are archived instead of deleted, and user removal retains anonymized financial records.
+The `/admin` workspace includes paid-order insights, account access/role management, portfolio theme drafting and publishing, multipart asset uploads, marketplace order inspection, customer email promotions, template test sends, and the existing legacy-transaction tools. Stripe owns promotion-code configuration and application. Themes with paid sales are archived instead of deleted, and user removal retains anonymized financial records.
+
+## Production email delivery
+
+- Verify `foliokit.store` in Resend and publish the exact SPF and DKIM records Resend provides. Add a DMARC record and monitor it before moving to a stricter policy.
+- Keep the account, billing, and marketing sender addresses stable and on the verified domain. Configure every email variable in `.env`; promotional sends remain disabled until `EMAIL_UNSUBSCRIBE_SECRET` and the legal `BUSINESS_ADDRESS` are present.
+- Promotions include one-click unsubscribe headers and an unsubscribe link. Opted-out customers are excluded from the admin recipient list and are checked again when a campaign is sent.
+- Invoice messages include Gmail Order structured data. Register the production billing sender with Google after it has an established sending history if you want Gmail to recognize the purchase markup outside self-tests.
+- Mailbox providers make the final Spam and category decision. Test the authenticated production domain with several major providers and monitor bounces, complaints, and domain reputation after deployment.
 
 ## Verification
 

@@ -17,6 +17,8 @@ export interface IUser {
   role: UserRole;
   status: UserStatus;
   lastLoginAt?: string;
+  welcomeEmailSentAt?: string;
+  marketingOptOutAt?: string;
   joinedAt?: string;
   createdAt: string;
   updatedAt: string;
@@ -66,6 +68,8 @@ export interface TransactionType {
   currency: string;
   status: TransactionStatus;
   paidAt?: string;
+  refundedAt?: string;
+  refundAmountMinor?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -149,10 +153,7 @@ export interface DiscountSnapshot {
 
 export interface CartType {
   items: Array<{ themeId: string; name: string; slug: string; priceMinor: number; currency: string; addedAt: string; previewAsset?: PublicAsset }>;
-  discountCode?: string;
-  discountPercentage?: number;
   subtotalMinor: number;
-  discountMinor: number;
   taxMinor: number;
   taxPercentage?: number;
   taxStatus: "estimated" | "calculated_at_checkout";
@@ -211,21 +212,6 @@ export interface PurchaseOverviewType {
   entitlements: EntitlementType[];
   orders: OrderType[];
 }
-
-export interface DiscountType {
-  id: string;
-  code: string;
-  percentage: number;
-  startsAt?: string;
-  expiresAt: string;
-  active: boolean;
-  usageLimit?: number;
-  redemptionCount: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-
 
 export interface SiteContentType {
   privacyHtml: string;

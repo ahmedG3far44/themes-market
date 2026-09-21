@@ -10,16 +10,18 @@ import { verifyRegion } from './middlewares/verifyRegion.ts';
 import { connectDatabase } from './config/database.ts';
 import { errorHandler, notFound } from './middlewares/error.ts';
 import { stripeWebhookHandler } from './routes/webhook.route.ts';
+import { emailConfigurationIssues } from './services/email.service.ts';
 
 
 const app = express()
 const PORT = env.PORT;
 
+const emailIssues = emailConfigurationIssues();
+if (emailIssues.length) console.warn(`Email configuration warnings:\n- ${emailIssues.join("\n- ")}`);
+
 app.set('trust proxy', true);
 
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
-
-// app.use(requestContext);
 
 app.use(cors({ origin: env.CLIENT_URL.split(",").map((value) => value.trim()), credentials: true }));
 

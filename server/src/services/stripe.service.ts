@@ -26,18 +26,19 @@ export interface StripeAmountSnapshot {
   total_details?: { amount_discount?: number | null; amount_shipping?: number | null; amount_tax?: number | null } | null;
 }
 
-export function validateStripeCheckoutAmounts(session: StripeAmountSnapshot, expectedBeforeTaxMinor: number, expectedCurrency: string) {
+export function validateStripeCheckoutAmounts(session: StripeAmountSnapshot, expectedSubtotalMinor: number, expectedCurrency: string) {
   const currency = session.currency?.toUpperCase();
   const subtotal = session.amount_subtotal;
   const total = session.amount_total;
   const stripeDiscount = session.total_details?.amount_discount ?? 0;
   const shipping = session.total_details?.amount_shipping ?? 0;
-  const tax = session.total_details?.amount_tax ?? (typeof total === "number" && typeof subtotal === "number" ? total - subtotal : null);
+  const tax = session.total_details?.amount_tax ?? (typeof total === "number" && typeof subtotal === "number" ? total - subtotal + stripeDiscount : null);
   if (currency !== expectedCurrency.toUpperCase()) throw new Error("Stripe checkout currency does not match the order snapshot");
-  if (subtotal !== expectedBeforeTaxMinor) throw new Error("Stripe checkout subtotal does not match the order snapshot");
-  if (stripeDiscount !== 0 || shipping !== 0) throw new Error("Stripe checkout contains an unexpected provider discount or shipping charge");
-  if (typeof total !== "number" || typeof tax !== "number" || tax < 0 || total !== subtotal + tax) throw new Error("Stripe checkout total does not match its subtotal and tax");
-  return { subtotalMinor: subtotal, taxMinor: tax, totalMinor: total, currency };
+  if (subtotal !== expectedSubtotalMinor) throw new Error("Stripe checkout subtotal does not match the order snapshot");
+  if (!Number.isInteger(stripeDiscount) || stripeDiscount < 0 || stripeDiscount > subtotal) throw new Error("Stripe checkout contains an invalid provider discount");
+  if (shipping !== 0) throw new Error("Stripe checkout contains an unexpected shipping charge");
+  if (typeof total !== "number" || typeof tax !== "number" || tax < 0 || total !== subtotal - stripeDiscount + tax) throw new Error("Stripe checkout total does not match its subtotal, discount, and tax");
+  return { subtotalMinor: subtotal, discountMinor: stripeDiscount, taxMinor: tax, totalMinor: total, currency };
 }
 
 export async function calculateMarketplaceTaxEstimate(input: { items: Array<{ reference: string; amountMinor: number }>; currency: string; customerIp?: string }) {
@@ -85,6 +86,7 @@ export async function createMarketplaceStripeCheckout(input: MarketplaceCheckout
   const session = await stripeClient().checkout.sessions.create({
     mode: "payment",
     customer_email: input.customerEmail,
+    allow_promotion_codes: true,
     billing_address_collection: "required",
     automatic_tax: { enabled: true },
     line_items: input.items.map((item) => ({

@@ -52,18 +52,6 @@ export const catalogQuerySchema = z.object({
   sort: z.enum(["newest", "price_asc", "price_desc", "popular"]).default("newest"),
 });
 
-const discountBaseSchema = z.object({
-  code: z.string().trim().min(3).max(32).regex(/^[A-Z0-9_-]+$/i).transform((value) => value.toUpperCase()),
-  percentage: z.number().int().min(1).max(100),
-  startsAt: z.coerce.date().optional(),
-  expiresAt: z.coerce.date(),
-  active: z.boolean().default(true),
-  usageLimit: z.number().int().min(1).optional(),
-});
-
-export const discountInputSchema = discountBaseSchema.refine((value) => !value.startsAt || value.expiresAt > value.startsAt, { message: "Expiry must be after the start date", path: ["expiresAt"] });
-export const discountPatchSchema = discountBaseSchema.partial().refine((value) => Object.keys(value).length > 0, "At least one field is required").refine((value) => !value.startsAt || !value.expiresAt || value.expiresAt > value.startsAt, { message: "Expiry must be after the start date", path: ["expiresAt"] });
-
 export const uploadInitSchema = z.object({
   kind: z.enum(["image", "video", "theme_zip"]),
   originalName: z.string().trim().min(1).max(180),
@@ -75,7 +63,6 @@ export const uploadInitSchema = z.object({
 export const uploadPartSchema = z.object({ partNumber: z.number().int().min(1).max(10_000) });
 export const uploadCompleteSchema = z.object({ parts: z.array(z.object({ ETag: z.string().min(1), PartNumber: z.number().int().min(1) })).min(1) });
 export const cartItemSchema = z.object({ themeId: objectId });
-export const cartDiscountSchema = z.object({ code: z.string().trim().min(3).max(32).transform((value) => value.toUpperCase()) });
 export const checkoutSchema = z.object({ idempotencyKey: z.string().uuid() }).strict();
 export const idSchema = z.object({ id: objectId });
 export const stripeSessionSchema = z.object({ sessionId: z.string().trim().regex(/^cs_(?:test_|live_)?[A-Za-z0-9]+$/, "Invalid Stripe Checkout Session identifier") });

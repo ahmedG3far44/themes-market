@@ -1,19 +1,10 @@
 import CartModel from "../models/cart.ts";
-import DiscountModel from "../models/discount.ts";
 import EntitlementModel from "../models/entitlement.ts";
 import ThemeModel from "../models/theme.ts";
 import UploadAssetModel from "../models/upload-asset.ts";
 import { AppError } from "../utils/app-error.ts";
 import { serializeAsset } from "./upload.service.ts";
 import { calculateMarketplaceTaxEstimate } from "./stripe.service.ts";
-
-export async function validDiscount(code?: string) {
-  if (!code) return null;
-  const now = new Date();
-  const discount = await DiscountModel.findOne({ code: code.toUpperCase(), active: true, expiresAt: { $gt: now }, $or: [{ startsAt: { $exists: false } }, { startsAt: { $lte: now } }] });
-  if (!discount || (discount.usageLimit !== undefined && discount.redemptionCount >= discount.usageLimit)) throw new AppError(409, "DISCOUNT_INVALID", "This discount code is invalid, expired, or fully redeemed");
-  return discount;
-}
 
 export async function getCart(userId: unknown, customerIp?: string) {
   const cart = await CartModel.findOne({ userId }).lean();
@@ -36,18 +27,12 @@ export async function getCart(userId: unknown, customerIp?: string) {
   const currency = items[0]?.currency ?? "USD";
   if (items.some((item: CartViewItem) => item.currency !== currency)) throw new AppError(409, "MIXED_CURRENCY_CART", "Cart items must use one currency");
   const subtotalMinor = items.reduce((sum: number, item: CartViewItem) => sum + item.priceMinor, 0);
-  let discount = null;
-  if (cart?.discountCode) { try { discount = await validDiscount(cart.discountCode); } catch { await CartModel.updateOne({ userId }, { $unset: { discountCode: 1 } }); } }
-  const discountMinor = discount ? Math.floor(subtotalMinor * discount.percentage / 100) : 0;
-  const allocatedDiscounts = items.map((item) => Math.floor(item.priceMinor * (discount?.percentage ?? 0) / 100));
-  if (allocatedDiscounts.length) allocatedDiscounts[allocatedDiscounts.length - 1] = discountMinor - allocatedDiscounts.slice(0, -1).reduce((sum, value) => sum + value, 0);
-  const beforeTaxMinor = subtotalMinor - discountMinor;
   const tax = await calculateMarketplaceTaxEstimate({
-    items: items.map((item, index) => ({ reference: item.themeId, amountMinor: item.priceMinor - (allocatedDiscounts[index] ?? 0) })),
+    items: items.map((item) => ({ reference: item.themeId, amountMinor: item.priceMinor })),
     currency,
     customerIp,
   });
-  return { items, discountCode: discount?.code, discountPercentage: discount?.percentage, currency, subtotalMinor, discountMinor, ...tax, totalMinor: beforeTaxMinor + tax.taxMinor, updatedAt: cart?.updatedAt ?? new Date() };
+  return { items, currency, subtotalMinor, ...tax, totalMinor: subtotalMinor + tax.taxMinor, updatedAt: cart?.updatedAt ?? new Date() };
 }
 
 export async function addCartItem(userId: unknown, themeId: string, customerIp?: string) {
@@ -63,5 +48,3 @@ export async function addCartItem(userId: unknown, themeId: string, customerIp?:
 }
 
 export async function removeCartItem(userId: unknown, themeId: string, customerIp?: string) { await CartModel.updateOne({ userId }, { $pull: { items: { themeId } } }); return getCart(userId, customerIp); }
-export async function applyCartDiscount(userId: unknown, code: string, customerIp?: string) { await validDiscount(code); await CartModel.findOneAndUpdate({ userId }, { $set: { discountCode: code.toUpperCase() } }, { upsert: true }); return getCart(userId, customerIp); }
-export async function clearCartDiscount(userId: unknown, customerIp?: string) { await CartModel.updateOne({ userId }, { $unset: { discountCode: 1 } }); return getCart(userId, customerIp); }

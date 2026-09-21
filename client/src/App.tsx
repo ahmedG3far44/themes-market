@@ -32,7 +32,7 @@ const AdminThemesPage = lazy(() => import('./routes/admin/themes'))
 const AdminThemeEditorPage = lazy(() => import('./routes/admin/theme-editor'))
 const AdminOrdersPage = lazy(() => import('./routes/admin/orders'))
 const AdminOrderDetailPage = lazy(() => import('./routes/admin/order-detail'))
-const DiscountsPage = lazy(() => import('./routes/admin/discounts'))
+const PromotionsPage = lazy(() => import('./routes/admin/promotions'))
 const PrivacyPage = lazy(() => import('./routes/privacy'))
 const TermsPage = lazy(() => import('./routes/terms'))
 const RefundPage = lazy(() => import('./routes/refund'))
@@ -87,7 +87,7 @@ function App() {
               <Route path='content' element={<AdminContentPage />} />
               <Route path='orders' element={<AdminOrdersPage />} />
               <Route path='orders/:id' element={<AdminOrderDetailPage />} />
-              <Route path='discounts' element={<DiscountsPage />} />
+              <Route path='promotions' element={<PromotionsPage />} />
             </Route>
             <Route path='*' element={<NotFoundPage />} />
           </Routes><SiteFooter /></Suspense>

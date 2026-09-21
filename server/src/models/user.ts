@@ -14,6 +14,10 @@ export interface UserDocument {
   role: UserRole | "user";
   status: UserStatus;
   lastLoginAt?: Date;
+  welcomeEmailState?: "pending" | "sending" | "sent" | "failed";
+  welcomeEmailAttemptedAt?: Date;
+  welcomeEmailSentAt?: Date;
+  marketingOptOutAt?: Date;
   joinedAt: Date;
   blockedAt?: Date;
   blockedBy?: mongoose.Types.ObjectId;
@@ -33,6 +37,10 @@ const userSchema = new Schema<UserDocument>({
   role: { type: String, enum: ["admin", "customer", "user"], default: "customer", index: true },
   status: { type: String, enum: ["active", "blocked"], default: "active", index: true },
   lastLoginAt: Date,
+  welcomeEmailState: { type: String, enum: ["pending", "sending", "sent", "failed"] },
+  welcomeEmailAttemptedAt: Date,
+  welcomeEmailSentAt: Date,
+  marketingOptOutAt: { type: Date, index: true },
   joinedAt: { type: Date, default: Date.now, index: true },
   blockedAt: Date,
   blockedBy: { type: Schema.Types.ObjectId, ref: "User" },

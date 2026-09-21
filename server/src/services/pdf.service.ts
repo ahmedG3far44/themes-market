@@ -63,7 +63,7 @@ async function collect(document: PDFKit.PDFDocument): Promise<Buffer> {
 
 export function createInvoicePdf(data: InvoiceData): Promise<Buffer> {
   assertInvoicePaid(data.order.status);
-  const doc = new PDFDocument({ size: "A4", margin: 48, bufferPages: true, compress: true, info: { Title: `Invoice ${data.order.orderNumber}`, Author: "Portfolio Market", Subject: "Paid order invoice" } });
+  const doc = new PDFDocument({ size: "A4", margin: 48, bufferPages: true, compress: true, info: { Title: `Invoice ${data.order.orderNumber}`, Author: "Foliokit", Subject: "Paid order invoice" } });
   doc.registerFont("InvoiceArabic", fonts.arabic);
   doc.registerFont("InvoiceArabicBold", fonts.arabicBold);
   const font = (value: string, bold = false) => hasArabic.test(value) ? (bold ? "InvoiceArabicBold" : "InvoiceArabic") : (bold ? "Helvetica-Bold" : "Helvetica");
@@ -71,11 +71,8 @@ export function createInvoicePdf(data: InvoiceData): Promise<Buffer> {
   const right = doc.page.width - 48;
 
   const header = () => {
-    doc.roundedRect(48, 40, 28, 28, 7).fill(ink);
-    doc.fillColor("#FFFFFF").font("Helvetica-Bold").fontSize(14).text("P", 48, 48, { width: 28, align: "center" });
-
-    doc.fillColor(ink).font("Helvetica-Bold").fontSize(17).text("PORTFOLIO MARKET", 84, 42);
-    doc.fillColor(muted).font("Helvetica").fontSize(8).text("PREMIUM PORTFOLIO THEMES", 84, 63, { characterSpacing: 1.2 });
+    doc.fillColor(ink).font("Helvetica-Bold").fontSize(17).text("FOLIOKIT", 48, 42);
+    doc.fillColor(muted).font("Helvetica").fontSize(8).text("ONLINE PORTFOLIO THEMES STORE", 48, 63, { characterSpacing: 1.2 });
 
     doc.fillColor(brand).font("Helvetica-Bold").fontSize(28).text("INVOICE", 360, 42, { width: right - 360, align: "right" });
 
@@ -108,8 +105,8 @@ export function createInvoicePdf(data: InvoiceData): Promise<Buffer> {
   let y = 322;
   const columns = { description: 48, quantity: 315, unit: 350, discount: 421, total: 487 };
   const drawTableHeader = () => {
-    doc.rect(48, y, width, 28).fill(ink);
-    doc.fillColor("#FFFFFF").font("Helvetica-Bold").fontSize(8);
+    doc.rect(48, y, width, 28).fill(soft);
+    doc.fillColor(ink).font("Helvetica-Bold").fontSize(8);
     doc.text("ITEM", columns.description + 10, y + 10, { width: 235 });
     doc.text("QTY", columns.quantity, y + 10, { width: 28, align: "center" });
     doc.text("PRICE", columns.unit, y + 10, { width: 65, align: "right" });
@@ -167,7 +164,7 @@ export function createInvoicePdf(data: InvoiceData): Promise<Buffer> {
     const footerY = doc.page.height - 82;
     doc.moveTo(48, footerY - 12).lineTo(right, footerY - 12).lineWidth(.5).strokeColor(line).stroke();
     doc.fillColor(muted).font("Helvetica").fontSize(7).text(`Page ${index + 1} of ${pages.count}`, right - 80, footerY, { width: 80, align: "right", lineBreak: false });
-    doc.text("Thank you for purchasing from Portfolio Market.", 48, footerY, { lineBreak: false });
+    doc.text("Thank you for purchasing from Foliokit.", 48, footerY, { lineBreak: false });
   }
 
   return collect(doc);
@@ -199,4 +196,36 @@ export async function paidOrderInvoiceForAdmin(orderId: string): Promise<{ pdf: 
   if (!order) throw new AppError(404, "ORDER_NOT_FOUND", "Order not found");
   const pdf = await createInvoicePdf(await invoiceData(order));
   return { pdf, filename: `invoice-${order.orderNumber}.pdf` };
+}
+
+export async function createExampleInvoicePdf(): Promise<{ pdf: Buffer; filename: string }> {
+  const now = new Date();
+  const order = {
+    _id: "64b64c16e3a54f0012345679",
+    orderNumber: "ORD-DEMO-001",
+    userId: "64b64c16e3a54f0012345671",
+    status: "paid",
+    paymentProvider: "stripe",
+    checkoutKey: "email-template-demo",
+    currency: "USD",
+    subtotalMinor: 4900,
+    discountMinor: 0,
+    taxMinor: 392,
+    totalMinor: 5292,
+    paidAt: now,
+    createdAt: now,
+    updatedAt: now,
+    items: [{
+      _id: "64b64c16e3a54f0012345672",
+      themeId: "64b64c16e3a54f0012345673",
+      sourceAssetId: "64b64c16e3a54f0012345674",
+      name: "Studio Grid",
+      slug: "studio-grid",
+      version: "1.0.0",
+      priceMinor: 4900,
+      discountMinor: 0,
+      totalMinor: 4900,
+    }],
+  } as unknown as InvoiceOrder;
+  return { pdf: await createInvoicePdf({ order, customer: { name: "Demo Customer", email: "customer@example.com" } }), filename: "invoice-demo.pdf" };
 }

@@ -8,6 +8,8 @@ import { createCheckout } from "../services/checkout.service.ts";
 import { themeAssetIssues } from "../utils/theme-assets.ts";
 import { AppError } from "../utils/app-error.ts";
 import { assertInvoicePaid, createInvoicePdf, type InvoiceData } from "../services/pdf.service.ts";
+import { createMarketingUnsubscribeToken, normalizeEmailSubject, renderEmailTemplate, verifyMarketingUnsubscribeToken } from "../services/email.service.ts";
+import { isSuccessfulFullRefund } from "../routes/webhook.route.ts";
 
 const validTheme = { name: "Studio Grid", slug: "studio-grid", shortDescription: "A considered portfolio for creative studios.", description: "A complete, responsive portfolio theme designed for independent creative studios.", stack: ["React"], features: ["Responsive"], priceMinor: 4900, currency: "usd", version: "1.0.0", previewUrl: "https://preview.example.com", previewAssetId: "64b64c16e3a54f0012345670", imageAssetIds: ["64b64c16e3a54f0012345678", "64b64c16e3a54f0012345677"], videoAssetIds: ["64b64c16e3a54f0012345676"], sourceAssetId: "64b64c16e3a54f0012345679", featured: false };
 
@@ -41,7 +43,14 @@ test("Stripe checkout reconciliation accepts provider tax without weakening subt
     amount_total: 13133,
     currency: "usd",
     total_details: { amount_discount: 0, amount_shipping: 0, amount_tax: 1613 },
-  }, 11520, "USD"), { subtotalMinor: 11520, taxMinor: 1613, totalMinor: 13133, currency: "USD" });
+  }, 11520, "USD"), { subtotalMinor: 11520, discountMinor: 0, taxMinor: 1613, totalMinor: 13133, currency: "USD" });
+
+  assert.deepEqual(validateStripeCheckoutAmounts({
+    amount_subtotal: 11520,
+    amount_total: 11981,
+    currency: "usd",
+    total_details: { amount_discount: 1152, amount_shipping: 0, amount_tax: 1613 },
+  }, 11520, "USD"), { subtotalMinor: 11520, discountMinor: 1152, taxMinor: 1613, totalMinor: 11981, currency: "USD" });
 
   assert.throws(() => validateStripeCheckoutAmounts({
     amount_subtotal: 11420,
@@ -82,7 +91,56 @@ test("invoice PDFs are generated only for paid orders", async () => {
   } as unknown as InvoiceData;
   const pdf = await createInvoicePdf(invoice);
   assert.equal(pdf.subarray(0, 5).toString(), "%PDF-");
-  assert.ok(pdf.length > 3_000);
+  assert.ok(pdf.length > 2_000);
+});
+
+test("email templates render safe event-specific content", () => {
+  for (const type of ["welcome", "invoice", "refund", "promotion"] as const) {
+    const rendered = renderEmailTemplate(type, { name: "<Demo>", orderNumber: "ORD-TEST", amountMinor: 5292, currency: "USD" });
+    assert.ok(rendered.subject.length > 0);
+    assert.match(rendered.html, /FOLIOKIT/);
+    assert.doesNotMatch(rendered.html, /<Demo>/);
+    assert.ok(rendered.text.length > 20);
+  }
+});
+
+test("email subjects are always present and cannot contain injected headers", () => {
+  assert.equal(normalizeEmailSubject("  Limited offer\r\nBcc: attacker@example.com  ", "Fallback"), "Limited offer Bcc: attacker@example.com");
+  assert.equal(normalizeEmailSubject(" \n ", "Fallback"), "Fallback");
+});
+
+test("invoice emails contain Gmail order markup and a purchase link", () => {
+  const rendered = renderEmailTemplate("invoice", {
+    name: "Customer",
+    orderNumber: "ORD-123",
+    amountMinor: 4900,
+    currency: "USD",
+    items: [{ name: "Studio Grid", priceMinor: 4900 }],
+    orderUrl: "https://foliokit.store/purchases",
+    orderDate: "2026-09-21T12:00:00.000Z",
+  });
+  assert.match(rendered.html, /application\/ld\+json/);
+  assert.match(rendered.html, /"@type":"Order"/);
+  assert.match(rendered.html, /https:\/\/foliokit\.store\/purchases/);
+});
+
+test("marketing unsubscribe tokens reject tampering", () => {
+  const previousSecret = env.EMAIL_UNSUBSCRIBE_SECRET;
+  env.EMAIL_UNSUBSCRIBE_SECRET = "a-test-secret-that-is-long-enough";
+  try {
+    const userId = "64b64c16e3a54f0012345671";
+    const token = createMarketingUnsubscribeToken(userId);
+    assert.equal(verifyMarketingUnsubscribeToken(token), userId);
+    assert.equal(verifyMarketingUnsubscribeToken(`${token}changed`), null);
+  } finally {
+    env.EMAIL_UNSUBSCRIBE_SECRET = previousSecret;
+  }
+});
+
+test("refund events only close an order after Stripe confirms the full amount", () => {
+  assert.equal(isSuccessfulFullRefund({ id: "evt_partial", type: "charge.refunded", data: { object: { id: "ch_1", amount: 5000, amount_refunded: 1000, refunded: false } } }, 5000), false);
+  assert.equal(isSuccessfulFullRefund({ id: "evt_full", type: "charge.refunded", data: { object: { id: "ch_1", amount: 5000, amount_refunded: 5000, refunded: true } } }, 5000), true);
+  assert.equal(isSuccessfulFullRefund({ id: "evt_refund", type: "refund.updated", data: { object: { id: "re_1", amount: 5000, status: "succeeded" } } }, 5000), true);
 });
 
 

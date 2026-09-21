@@ -1,6 +1,7 @@
 import env from "../config/env.ts";
 import UserModel from "../models/user.ts";
 import type { UserProvider } from "../../../shared/types.ts";
+import { sendEmailTemplate } from "./email.service.ts";
 
 interface ClerkEmail {
   id: string;
@@ -76,6 +77,7 @@ export async function syncLoggedInUser(clerkId: string) {
         role: email === env.ADMIN_EMAIL.toLowerCase() ? "admin" : "customer",
         status: "active",
         joinedAt: new Date(),
+        welcomeEmailState: "pending",
       },
     },
     { returnDocument: "after", upsert: true, runValidators: true },
@@ -83,6 +85,33 @@ export async function syncLoggedInUser(clerkId: string) {
   if (user.role === "user") {
     user.role = "customer";
     await user.save();
+  }
+
+  const retryBefore = new Date(Date.now() - 10 * 60_000);
+  const welcomeRecipient = await UserModel.findOneAndUpdate(
+    {
+      _id: user._id,
+      $or: [
+        { welcomeEmailState: { $in: ["pending", "failed"] } },
+        { welcomeEmailState: "sending", welcomeEmailAttemptedAt: { $lt: retryBefore } },
+      ],
+    },
+    { $set: { welcomeEmailState: "sending", welcomeEmailAttemptedAt: new Date() } },
+    { returnDocument: "after" },
+  );
+  if (welcomeRecipient) {
+    try {
+      await sendEmailTemplate({
+        to: welcomeRecipient.email,
+        type: "welcome",
+        variables: { name: welcomeRecipient.name },
+        idempotencyKey: `welcome-user/${String(welcomeRecipient._id)}`,
+      });
+      await UserModel.updateOne({ _id: welcomeRecipient._id }, { $set: { welcomeEmailState: "sent", welcomeEmailSentAt: new Date() } });
+    } catch (error) {
+      console.error("Welcome email delivery failed", { userId: String(welcomeRecipient._id), error });
+      await UserModel.updateOne({ _id: welcomeRecipient._id }, { $set: { welcomeEmailState: "failed" } });
+    }
   }
   return user;
 }

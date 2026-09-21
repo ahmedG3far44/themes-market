@@ -91,6 +91,7 @@ export async function listUsers(query: Record<string, unknown>) {
   if (query.provider) filter.provider = query.provider as UserProvider;
   if (query.status) filter.status = query.status as UserStatus;
   if (query.role) filter.role = query.role as UserRole;
+  if (query.marketingEligible === "true") filter.marketingOptOutAt = { $exists: false };
 
   const [items, total] = await Promise.all([
     UserModel.find(filter).sort({ createdAt: -1 }).skip((page - 1) * pageSize).limit(pageSize).lean(),

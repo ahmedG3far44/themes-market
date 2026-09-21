@@ -6,7 +6,7 @@ import ThemeModel from "../models/theme.ts";
 import TransactionModel from "../models/transaction.ts";
 import UploadAssetModel from "../models/upload-asset.ts";
 import { AppError } from "../utils/app-error.ts";
-import { getCart, validDiscount } from "./cart.service.ts";
+import { getCart } from "./cart.service.ts";
 import { createMarketplaceStripeCheckout, validateStripeCheckoutAmounts } from "./stripe.service.ts";
 
 type CheckoutUser = { _id: unknown; email: string; name: string; phone?: string; role?: string };
@@ -37,21 +37,16 @@ export async function createCheckout(user: CheckoutUser, idempotencyKey: string,
     const readySources = await UploadAssetModel.find({ _id: { $in: sourceIds }, kind: "theme_zip", status: "ready" }).select("_id").lean();
     if (readySources.length !== themes.length) throw new AppError(409, "SOURCE_NOT_READY", "One or more theme downloads are not ready");
 
-    const discount = await validDiscount(cart?.discountCode);
     const subtotalMinor = themes.reduce((sum, theme) => sum + theme.priceMinor, 0);
-    const discountMinor = discount ? Math.floor(subtotalMinor * discount.percentage / 100) : 0;
-    const allocatedDiscounts = themes.map((theme) => Math.floor(theme.priceMinor * (discount?.percentage ?? 0) / 100));
-    if (allocatedDiscounts.length) allocatedDiscounts[allocatedDiscounts.length - 1] = discountMinor - allocatedDiscounts.slice(0, -1).reduce((sum, value) => sum + value, 0);
 
     order = await OrderModel.create({
       orderNumber: orderNumber(), userId: user._id, checkoutKey: idempotencyKey, paymentProvider: "stripe", status: "pending",
-      currency: themes[0]?.currency ?? "USD", subtotalMinor, discountMinor, taxMinor: 0, totalMinor: subtotalMinor - discountMinor,
-      discountSnapshot: discount ? { code: discount.code, percentage: discount.percentage } : undefined,
+      currency: themes[0]?.currency ?? "USD", subtotalMinor, discountMinor: 0, taxMinor: 0, totalMinor: subtotalMinor,
       customerSnapshot: { name: user.name, email: user.email, ...(user.phone ? { phone: user.phone } : {}) },
       regionSnapshot: region,
-      items: themes.map((theme, index) => ({
+      items: themes.map((theme) => ({
         themeId: theme._id, name: theme.name, slug: theme.slug, version: theme.version, priceMinor: theme.priceMinor,
-        discountMinor: allocatedDiscounts[index] ?? 0, totalMinor: theme.priceMinor - (allocatedDiscounts[index] ?? 0), sourceAssetId: theme.sourceAssetId,
+        discountMinor: 0, totalMinor: theme.priceMinor, sourceAssetId: theme.sourceAssetId,
       })),
     });
   }
@@ -77,8 +72,10 @@ export async function createCheckout(user: CheckoutUser, idempotencyKey: string,
       idempotencyKey,
     });
     if (!session.url) throw new Error("Stripe returned no checkout URL");
-    const amounts = validateStripeCheckoutAmounts({ amount_subtotal: session.amountSubtotal, amount_total: session.amountTotal, currency: session.currency, total_details: session.totalDetails }, order.subtotalMinor - order.discountMinor, order.currency);
+    const amounts = validateStripeCheckoutAmounts({ amount_subtotal: session.amountSubtotal, amount_total: session.amountTotal, currency: session.currency, total_details: session.totalDetails }, order.subtotalMinor, order.currency);
     order.taxMinor = amounts.taxMinor;
+    order.stripeSubtotalMinor = amounts.subtotalMinor;
+    order.discountMinor = amounts.discountMinor;
     order.totalMinor = amounts.totalMinor;
     order.paymentAmountMinor = amounts.totalMinor;
     order.paymentCurrency = amounts.currency;

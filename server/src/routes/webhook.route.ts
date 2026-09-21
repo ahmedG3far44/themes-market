@@ -1,18 +1,95 @@
 import type { Request, Response } from "express";
-import OrderModel from "../models/order.ts";
+import OrderModel, { type OrderDocument } from "../models/order.ts";
 import TransactionModel from "../models/transaction.ts";
 import { StripeWebhookEventModel } from "../models/operations.ts";
-import { failOrderPayment, fulfillPaidOrder } from "../services/fulfillment.service.ts";
+import { failOrderPayment, fulfillPaidOrder, refundPaidOrder } from "../services/fulfillment.service.ts";
+import { paidOrderInvoiceForAdmin } from "../services/pdf.service.ts";
+import { sendEmailTemplate } from "../services/email.service.ts";
 import { validateStripeCheckoutAmounts, verifyStripeSignature } from "../services/stripe.service.ts";
 
-interface StripeEvent {
+interface StripeObject {
   id: string;
-  type: string;
-  data: { object: { id: string; payment_status?: string; payment_intent?: string | { id?: string } | null; amount_subtotal?: number | null; amount_total?: number | null; currency?: string | null; total_details?: { amount_discount?: number | null; amount_shipping?: number | null; amount_tax?: number | null } | null; metadata?: { orderId?: string; transactionId?: string } } };
+  payment_status?: string;
+  payment_intent?: string | { id?: string } | null;
+  amount_subtotal?: number | null;
+  amount_total?: number | null;
+  amount?: number | null;
+  amount_refunded?: number | null;
+  currency?: string | null;
+  refunded?: boolean;
+  status?: string;
+  total_details?: { amount_discount?: number | null; amount_shipping?: number | null; amount_tax?: number | null } | null;
+  metadata?: { orderId?: string; transactionId?: string };
 }
 
-function paymentIntentId(value: StripeEvent["data"]["object"]["payment_intent"]): string | undefined {
+export interface StripeEvent {
+  id: string;
+  type: string;
+  data: { object: StripeObject };
+}
+
+function paymentIntentId(value: StripeObject["payment_intent"]): string | undefined {
   return typeof value === "string" ? value : value?.id;
+}
+
+export function isSuccessfulFullRefund(event: StripeEvent, expectedAmountMinor: number): boolean {
+  const object = event.data.object;
+  if (event.type === "charge.refunded") {
+    return object.refunded === true || (typeof object.amount === "number" && typeof object.amount_refunded === "number" && object.amount_refunded >= object.amount);
+  }
+  if (!["refund.created", "refund.updated"].includes(event.type) || object.status !== "succeeded") return false;
+  return typeof object.amount === "number" && object.amount >= expectedAmountMinor;
+}
+
+function applyStripeDiscount(order: OrderDocument, discountMinor: number): void {
+  order.discountMinor = discountMinor;
+  let allocated = 0;
+  order.items.forEach((item, index) => {
+    const itemDiscount = index === order.items.length - 1
+      ? discountMinor - allocated
+      : Math.floor(discountMinor * item.priceMinor / Math.max(1, order.subtotalMinor));
+    item.discountMinor = Math.min(item.priceMinor, Math.max(0, itemDiscount));
+    item.totalMinor = item.priceMinor - item.discountMinor;
+    allocated += item.discountMinor;
+  });
+}
+
+async function sendInvoiceEmail(orderId: unknown): Promise<void> {
+  const order = await OrderModel.findById(orderId);
+  if (!order || order.invoiceEmailSentAt || order.status !== "paid") return;
+  const invoice = await paidOrderInvoiceForAdmin(String(order._id));
+  await sendEmailTemplate({
+    to: order.customerSnapshot?.email ?? "",
+    type: "invoice",
+    variables: {
+      name: order.customerSnapshot?.name,
+      orderNumber: order.orderNumber,
+      amountMinor: order.totalMinor,
+      currency: order.currency,
+      orderDate: (order.paidAt ?? order.updatedAt ?? new Date()).toISOString(),
+      items: order.items.map((item: { name: string; totalMinor: number }) => ({ name: item.name, priceMinor: item.totalMinor })),
+    },
+    attachment: { filename: invoice.filename, content: invoice.pdf },
+    idempotencyKey: `invoice-order/${String(order._id)}`,
+  });
+  await OrderModel.updateOne({ _id: order._id }, { $set: { invoiceEmailSentAt: new Date() } });
+}
+
+async function sendRefundEmail(orderId: unknown): Promise<void> {
+  const order = await OrderModel.findById(orderId);
+  if (!order || order.refundEmailSentAt || order.status !== "refunded") return;
+  await sendEmailTemplate({
+    to: order.customerSnapshot?.email ?? "",
+    type: "refund",
+    variables: {
+      name: order.customerSnapshot?.name,
+      orderNumber: order.orderNumber,
+      amountMinor: order.refundAmountMinor ?? order.totalMinor,
+      currency: order.currency,
+    },
+    idempotencyKey: `refund-order/${String(order._id)}`,
+  });
+  await OrderModel.updateOne({ _id: order._id }, { $set: { refundEmailSentAt: new Date() } });
 }
 
 export async function stripeWebhookHandler(req: Request, res: Response): Promise<void> {
@@ -39,34 +116,55 @@ export async function stripeWebhookHandler(req: Request, res: Response): Promise
 
   try {
     await StripeWebhookEventModel.findOneAndUpdate({ _id: event.id }, { $set: { type: event.type, status: "processing" }, $unset: { errorCode: 1 } }, { upsert: true, returnDocument: "after" });
-    const session = event.data.object;
+    const object = event.data.object;
     const isCheckoutEvent = event.type.startsWith("checkout.session.");
-    const paid = (event.type === "checkout.session.completed" && ["paid", "no_payment_required"].includes(session.payment_status ?? "")) || event.type === "checkout.session.async_payment_succeeded";
+    const paid = (event.type === "checkout.session.completed" && ["paid", "no_payment_required"].includes(object.payment_status ?? "")) || event.type === "checkout.session.async_payment_succeeded";
     const failed = event.type === "checkout.session.async_payment_failed" || event.type === "checkout.session.expired";
-    const order = session.metadata?.orderId ? await OrderModel.findById(session.metadata.orderId) : await OrderModel.findOne({ stripeCheckoutSessionId: session.id });
 
-    if (isCheckoutEvent && (paid || failed) && !order) throw new Error(`No order matches Stripe Checkout Session ${session.id}`);
+    if (isCheckoutEvent) {
+      const order = object.metadata?.orderId ? await OrderModel.findById(object.metadata.orderId) : await OrderModel.findOne({ stripeCheckoutSessionId: object.id });
+      if ((paid || failed) && !order) throw new Error(`No order matches Stripe Checkout Session ${object.id}`);
 
-    if (order) {
-      if (paid) {
-        const amounts = validateStripeCheckoutAmounts(session, order.subtotalMinor - order.discountMinor, order.currency);
-        order.taxMinor = amounts.taxMinor;
-        order.totalMinor = amounts.totalMinor;
-        await Promise.all([
-          order.save(),
-          TransactionModel.updateOne({ orderId: order._id, provider: "stripe" }, { $set: { amount: amounts.totalMinor / 100, amountMinor: amounts.totalMinor, currency: amounts.currency } }),
-        ]);
-        await fulfillPaidOrder(order, session.id, paymentIntentId(session.payment_intent));
-      } else if (failed) {
-        await failOrderPayment(order, session.id);
+      if (order) {
+        if (paid && order.status !== "refunded") {
+          const stripeSubtotalMinor = order.stripeSubtotalMinor ?? order.subtotalMinor - order.discountMinor;
+          const amounts = validateStripeCheckoutAmounts(object, stripeSubtotalMinor, order.currency);
+          const priorLineDiscountMinor = Math.max(0, order.subtotalMinor - stripeSubtotalMinor);
+          applyStripeDiscount(order, priorLineDiscountMinor + amounts.discountMinor);
+          order.stripeSubtotalMinor = amounts.subtotalMinor;
+          order.taxMinor = amounts.taxMinor;
+          order.totalMinor = amounts.totalMinor;
+          order.paymentAmountMinor = amounts.totalMinor;
+          order.paymentCurrency = amounts.currency;
+          await Promise.all([
+            order.save(),
+            TransactionModel.updateOne({ orderId: order._id, provider: "stripe" }, { $set: { amount: amounts.totalMinor / 100, amountMinor: amounts.totalMinor, currency: amounts.currency } }),
+          ]);
+          await fulfillPaidOrder(order, object.id, paymentIntentId(object.payment_intent));
+          await sendInvoiceEmail(order._id);
+        } else if (failed) {
+          await failOrderPayment(order, object.id);
+        }
+      } else if (object.metadata?.transactionId) {
+        const transaction = await TransactionModel.findOne({ _id: object.metadata.transactionId, provider: "stripe" });
+        if (paid && transaction) {
+          if (object.amount_total !== (transaction.amountMinor ?? Math.round(transaction.amount * 100)) || object.currency?.toUpperCase() !== transaction.currency) throw new Error("Stripe checkout amount or currency does not match the transaction");
+          await TransactionModel.updateOne({ _id: transaction._id, status: { $ne: "success" } }, { $set: { status: "success", paidAt: new Date(), externalId: object.id, "metadata.paymentIntentId": paymentIntentId(object.payment_intent) } });
+        } else if (failed) {
+          await TransactionModel.updateOne({ _id: object.metadata.transactionId, provider: "stripe", status: { $ne: "success" } }, { $set: { status: "declined", externalId: object.id } });
+        }
       }
-    } else if (session.metadata?.transactionId) {
-      const transaction = await TransactionModel.findOne({ _id: session.metadata.transactionId, provider: "stripe" });
-      if (paid && transaction) {
-        if (session.amount_total !== (transaction.amountMinor ?? Math.round(transaction.amount * 100)) || session.currency?.toUpperCase() !== transaction.currency) throw new Error("Stripe checkout amount or currency does not match the transaction");
-        await TransactionModel.updateOne({ _id: transaction._id, status: { $ne: "success" } }, { $set: { status: "success", paidAt: new Date(), externalId: session.id, "metadata.paymentIntentId": paymentIntentId(session.payment_intent) } });
-      } else if (failed) {
-        await TransactionModel.updateOne({ _id: session.metadata.transactionId, provider: "stripe", status: { $ne: "success" } }, { $set: { status: "declined", externalId: session.id } });
+    } else if (["charge.refunded", "refund.created", "refund.updated"].includes(event.type)) {
+      const intentId = paymentIntentId(object.payment_intent);
+      const order = object.metadata?.orderId
+        ? await OrderModel.findById(object.metadata.orderId)
+        : intentId ? await OrderModel.findOne({ stripePaymentIntentId: intentId }) : null;
+      if (order && isSuccessfulFullRefund(event, order.paymentAmountMinor ?? order.totalMinor)) {
+        const refundAmountMinor = event.type === "charge.refunded"
+          ? object.amount_refunded ?? object.amount ?? order.totalMinor
+          : object.amount ?? order.totalMinor;
+        await refundPaidOrder(order, refundAmountMinor);
+        await sendRefundEmail(order._id);
       }
     }
 

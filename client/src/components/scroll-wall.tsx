@@ -37,6 +37,10 @@ export interface ScrollPortraitWallProps {
     columns?: number;
     /** Show the name / role caption under each portrait. Default `false` — only shown if items carry captions. */
     showCaptions?: boolean;
+    /** Optional full-bleed video held behind the scrolling portrait wall. */
+    videoSrc?: string;
+    /** Optional project-specific hero content rendered in the sticky text layer. */
+    content?: React.ReactNode;
     className?: string;
 }
 
@@ -49,21 +53,19 @@ function normalizeItems(images: string[] | PortraitItem[]): PortraitItem[] {
     );
 }
 
-/* Deterministic placement so SSR and client agree (no Math.random):
- * one portrait per row, with every third row holding a second one,
- * columns walked in a scattered pattern. Returns a grid of item
- * indices (or -1 for an empty cell). */
+/* Deterministic placement so SSR and client agree (no Math.random).
+ * Cards alternate between the outer-left and outer-right columns so
+ * they travel around, rather than through, the centered hero copy. */
 function buildLayout(count: number, cols: number): number[][] {
     const rows: number[][] = [];
     let i = 0;
     let r = 0;
     while (i < count) {
         const row = new Array<number>(cols).fill(-1);
-        const a = (r * 2 + (r % 2)) % cols;
+        const a = r % 2 === 0 ? 0 : cols - 1;
         row[a] = i++;
         if (r % 3 === 0 && i < count) {
-            let b = (a + 2) % cols;
-            if (b === a) b = (a + 1) % cols;
+            const b = a === 0 ? cols - 1 : 0;
             row[b] = i++;
         }
         rows.push(row);
@@ -104,15 +106,64 @@ export function ScrollPortraitWall({
     images,
     columns = 4,
     showCaptions = false,
+    videoSrc,
+    content,
     className,
 }: ScrollPortraitWallProps) {
     const root = React.useRef<HTMLElement | null>(null);
+    const video = React.useRef<HTMLVideoElement | null>(null);
     const cols = useResponsiveColumns(Math.max(1, columns));
 
     const items = React.useMemo(() => normalizeItems(images), [images]);
     const layout = React.useMemo(
         () => buildLayout(items.length, cols),
         [items.length, cols],
+    );
+
+    useGSAP(
+        () => {
+            const element = video.current;
+            const section = root.current;
+            if (!element || !section || !videoSrc) return;
+
+            element.pause();
+            if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+                element.currentTime = 0;
+                return;
+            }
+
+            let scrubTween: gsap.core.Tween | undefined;
+            let scrollTrigger: ScrollTrigger | undefined;
+            const connectVideoToScroll = () => {
+                if (!Number.isFinite(element.duration) || element.duration <= 0) return;
+                scrubTween?.kill();
+                scrollTrigger?.kill();
+                scrubTween = gsap.to(element, {
+                    currentTime: Math.max(0, element.duration - 0.05),
+                    duration: 1,
+                    ease: "none",
+                    paused: true,
+                });
+                scrollTrigger = ScrollTrigger.create({
+                    animation: scrubTween,
+                    trigger: section,
+                    start: "top top",
+                    end: "bottom bottom",
+                    scrub: 0.45,
+                    invalidateOnRefresh: true,
+                });
+            };
+
+            if (element.readyState >= HTMLMediaElement.HAVE_METADATA) connectVideoToScroll();
+            else element.addEventListener("loadedmetadata", connectVideoToScroll, { once: true });
+
+            return () => {
+                element.removeEventListener("loadedmetadata", connectVideoToScroll);
+                scrollTrigger?.kill();
+                scrubTween?.kill();
+            };
+        },
+        { scope: root, dependencies: [videoSrc], revertOnUpdate: true },
     );
 
     useGSAP(
@@ -158,29 +209,30 @@ export function ScrollPortraitWall({
             const nodes = gsap.utils.toArray<HTMLElement>(".spw-item");
 
             if (reduce) {
-                gsap.set(nodes, { scale: 1 });
+                gsap.set(nodes, { autoAlpha: 1, xPercent: 0, yPercent: 0, scale: 1 });
                 return;
             }
 
-            // Each portrait scrubs scale 0 → 1 → 0 across its full pass through the
-            // viewport: it grows in from its transform-origin corner, peaks at
-            // centre, then shrinks away — "comes and goes".
             nodes.forEach((el) => {
-                gsap
-                    .timeline({
-                        scrollTrigger: {
-                            trigger: el,
-                            start: "top bottom",
-                            end: "bottom top",
-                            scrub: true,
-                        },
-                    })
-                    .fromTo(
-                        el,
-                        { scale: 0 },
-                        { scale: 1, ease: "power2.out", duration: 0.5 },
-                    )
-                    .to(el, { scale: 0, ease: "power2.in", duration: 0.5 });
+                const direction = el.dataset.side === "left" ? -1 : 1;
+                gsap.fromTo(el, {
+                    autoAlpha: 0,
+                    xPercent: direction * 24,
+                    yPercent: 42,
+                    scale: 0.94,
+                }, {
+                    autoAlpha: 1,
+                    xPercent: 0,
+                    yPercent: -34,
+                    scale: 1,
+                    ease: "none",
+                    scrollTrigger: {
+                        trigger: el,
+                        start: "top 94%",
+                        end: "bottom 6%",
+                        scrub: 0.4,
+                    },
+                });
             });
         },
         { scope: root, dependencies: [cols, items.length], revertOnUpdate: true },
@@ -190,23 +242,40 @@ export function ScrollPortraitWall({
         <section
             ref={root}
             aria-label={typeof title === "string" ? title : undefined}
-            className={[className].filter(Boolean).join(" ")}
+            className={`${["scroll-portrait-wall", className].filter(Boolean).join(" ")} bg-brand min-h-screen`}
         >
-            <div className="spw-hero-copy">
-                <h1 className="spw-hero-title">
-                    <span className="spw-title-base">{title}</span>
-                    <span className="spw-title-fill" aria-hidden="true">{title}</span>
-                </h1>
-                {desc && (
-                    <p className="spw-hero-description">
-                        {desc}
-                    </p>
-                )}
-
-                <div className="spw-hero-actions">
-                    <Link className="primary-button spw-primary-cta" to="/themes">Explore themes <ArrowRight size={17} /></Link>
-                    <a className="secondary-button spw-secondary-cta" href="#featured-themes">View featured themes</a>
+            {videoSrc && <div className="spw-video-track" aria-hidden="true">
+                <div className="spw-video-layer">
+                    <video
+                        ref={video}
+                        className="spw-background-video"
+                        src={videoSrc}
+                        autoPlay
+                        muted
+                        playsInline
+                        preload="auto"
+                        tabIndex={-1}
+                        disablePictureInPicture
+                    />
                 </div>
+            </div>}
+            <div className="spw-hero-copy">
+                {content ?? <>
+                    <h1 className="spw-hero-title">
+                        <span className="spw-title-base">{title}</span>
+                        <span className="spw-title-fill" aria-hidden="true">{title}</span>
+                    </h1>
+                    {desc && (
+                        <p className="spw-hero-description">
+                            {desc}
+                        </p>
+                    )}
+
+                    <div className="spw-hero-actions">
+                        <Link className="primary-button spw-primary-cta" to="/themes">Explore themes <ArrowRight size={17} /></Link>
+                        <a className="secondary-button spw-secondary-cta" href="#featured-themes">View featured themes</a>
+                    </div>
+                </>}
             </div>
 
             {/* The scattered portrait grid */}
@@ -218,6 +287,7 @@ export function ScrollPortraitWall({
                                 return <div key={ci} className="aspect-square flex-1" />;
 
                             const item = items[idx];
+                            const side = ci < cols / 2 ? "left" : "right";
                             const origin = ci < cols / 2 ? "right bottom" : "left bottom";
                             const hasCaption = showCaptions && (item.name || item.role);
 
@@ -225,7 +295,8 @@ export function ScrollPortraitWall({
                                 <div key={ci} className="aspect-square flex-1">
                                     <div
                                         className="spw-item relative h-full w-full"
-                                        style={{ transformOrigin: origin, transform: "scale(0)" }}
+                                        data-side={side}
+                                        style={{ transformOrigin: origin }}
                                     >
                                         <img
                                             src={item.src}

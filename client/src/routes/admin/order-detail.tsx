@@ -1,13 +1,13 @@
 /* useAsync.run is stable across renders. */
 /* oxlint-disable react-hooks/exhaustive-deps */
 import type { IUser, OrderType } from "@shared/types";
-import { ArrowLeft, Download, Mail, ReceiptText, User } from "lucide-react";
+import { ArrowLeft, ExternalLink, Mail, ReceiptText, User } from "lucide-react";
 import { useEffect } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ErrorMessage } from "../../components/ui/error-message";
 import { Spinner } from "../../components/ui/spinner";
 import { useAsync } from "../../hooks/use-async";
-import { api, saveApiFile } from "../../lib/api";
+import { api } from "../../lib/api";
 import { dateTime, money } from "../../lib/format";
 import { ErrorState } from "../error/error";
 
@@ -38,6 +38,22 @@ export default function AdminOrderDetailPage() {
     backLabel="Back to marketplace orders"
   />;
 
+  const previewInvoice = () => {
+    const previewTab = window.open("", "_blank");
+    if (!previewTab) {
+      void invoice.run(Promise.reject(new Error("Your browser blocked the invoice preview. Allow pop-ups for this site and try again."))).catch(() => undefined);
+      return;
+    }
+    previewTab.opener = null;
+    previewTab.document.title = "Loading invoice preview…";
+    previewTab.document.body.innerHTML = '<p style="font:14px Arial,sans-serif;padding:24px;color:#4f5a54">Loading invoice preview…</p>';
+    void invoice.run(api.download(`/admin/orders/${order.id}/invoice`)).then((file) => {
+      const url = URL.createObjectURL(file.blob);
+      previewTab.location.replace(url);
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    }).catch(() => previewTab.close());
+  };
+
   return <main className="admin-page">
     <Link className="back-link" to="/admin/orders">
       <ArrowLeft size={16} />All marketplace orders</Link>
@@ -47,10 +63,9 @@ export default function AdminOrderDetailPage() {
         <p>Created {dateTime(order.createdAt)} {order.paidAt && `· Paid ${dateTime(order.paidAt)}`}</p>
       </div>
       <div className="order-heading-actions">
-        <span className={`status-pill ${order.status === "paid" ? "active" : "blocked"}`}>
-          {order.status}</span>{order.status === "paid" &&
-            <button className="secondary-button" type="button" disabled={invoice.isLoading} onClick={() => void invoice.run(api.download(`/admin/orders/${order.id}/invoice`)).then(saveApiFile).catch(() => undefined)}>
-              {invoice.isLoading ? <Spinner size="sm" /> : <Download size={16} />}Invoice PDF</button>}
+        {order.status === "paid" &&
+          <button className="secondary-button" type="button" disabled={invoice.isLoading} onClick={previewInvoice}>
+            {invoice.isLoading ? <Spinner size="sm" /> : <ExternalLink size={16} />}Preview invoice PDF</button>}
       </div>
     </div>
 
@@ -59,46 +74,45 @@ export default function AdminOrderDetailPage() {
       <article className="panel order-lines">
         <div className="panel-heading">
           <div><h2><ReceiptText size={18} />Purchased themes</h2>
-            <p>The product and price snapshots captured at checkout.</p></div></div>
+            <p>The product and price snapshots captured at checkout.</p></div>
+          <span className={`status-pill ${order.status === "paid" ? "active" : order.status === "pending" ? "pending" : "blocked"}`}>
+            {order.status}
+          </span>
+        </div>
         {order.items.map((item) => <div className="order-line" key={item.id}><div>
           <strong>{item.name}</strong>
           <span>Version {item.version} · Theme ID {item.themeId}</span></div>
           <dl>
-            <dt>Price</dt><dd>{money(item.priceMinor, order.currency)}</dd>
-            {item.discountMinor > 0 && <>
-              <dt>Discount</dt><dd>−{money(item.discountMinor, order.currency)}</dd>
-            </>}
-            <dt>Total</dt><dd><strong>{money(item.totalMinor, order.currency)}</strong></dd>
+            <dt>Price</dt><dd className="text-zinc-500">{money(item.priceMinor, order.currency)}</dd>
           </dl>
         </div>)}
       </article>
       <aside>
         <article className="panel customer-panel">
 
-          <h2>Customer</h2>
+          <h2 className="font-sem">Customer</h2>
 
-          <p><User size={16} />{order.user?.name ?? "Deleted user"}</p>
+          <p className="mt-2"><User size={16} />{order.user?.name ?? "Deleted user"}</p>
           <p><Mail size={16} />{order.user?.email ?? "Retained order record"}</p>
           <small className="flex items-center gap-2 my-2">
-            <span className="capitalize">{order.user.provider}</span>
+
+            <span className="capitalize my-2">
+              <img className="w-5 h-5" src={`/${order.user?.provider?.toLocaleLowerCase().trim()}.svg`} alt={order.user?.provider} />
+            </span>
+
+            <p>Account provider</p>
           </small>
         </article>
-        <article className="panel totals-panel">
-          <h2>Payment summary</h2>
-          <dl>
-            <div>
-              <dt>Subtotal</dt><dd>{money(order.subtotalMinor, order.currency)}</dd>
+        <article className="bg-white p-4 rounded-2xl border border-zinc-200">
+          <h2 className="font-semibold">Payment summary</h2>
+          <dl className="flex flex-col gap-2 mt-4">
+            <div className="flex justify-between text-xs">
+              <dt>Subtotal</dt><dd className="text-zinc-500 font-normal">{money(order.subtotalMinor, order.currency)}</dd>
             </div>
-            <div>
-              {order.discountMinor > 0 && <>
-                <dt>Discount {order.discountSnapshot?.code && `(${order.discountSnapshot.code})`}</dt>
-                <dd>−{money(order.discountMinor, order.currency)}</dd>
-              </>}
-            </div>
-            {order.taxMinor > 0 && <div>
-              <dt>Tax</dt><dd>{money(order.taxMinor, order.currency)}</dd>
+            {order.taxMinor > 0 && <div className="flex justify-between text-xs">
+              <dt>Tax</dt><dd className="text-green-800 font-normal ">+{money(order.taxMinor, order.currency)}</dd>
             </div>}
-            <div className="summary-total"><dt>Total</dt><dd>{money(order.totalMinor, order.currency)}</dd></div></dl></article>
+            <div className="flex justify-between border-t border-zinc-200 mt-4 pt-4 font-semibold "><dt>Total</dt><dd >{money(order.totalMinor, order.currency)}</dd></div></dl></article>
       </aside>
     </div>
   </main>

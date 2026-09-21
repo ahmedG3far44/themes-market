@@ -10,6 +10,7 @@ import { useCart } from "../context/cart-store";
 import { useAsync } from "../hooks/use-async";
 import { api } from "../lib/api";
 import HeroSection from "../components/hero";
+import LogoMarquee from "../components/logos-loop";
 
 export default function Home() {
   const { user } = useAppAuth();
@@ -23,6 +24,7 @@ export default function Home() {
   return <div className="marketing-page">
 
     <HeroSection />
+    <LogoMarquee />
     <main>
       <section className="featured-themes" id="featured-themes">
         <div className="section-heading"><div><span className="eyebrow">Editor’s selection</span><h2>Built to make a strong first impression.</h2></div><Link to="/themes">See every theme <ArrowRight size={17} /></Link></div>

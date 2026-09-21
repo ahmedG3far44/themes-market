@@ -19,6 +19,7 @@ export interface OrderDocument {
   paymentProvider: "stripe";
   stripeCheckoutSessionId?: string;
   stripePaymentIntentId?: string;
+  stripeSubtotalMinor?: number;
   checkoutKey: string;
   checkoutUrl?: string;
   currency: string;
@@ -33,6 +34,10 @@ export interface OrderDocument {
   regionSnapshot?: { country?: string; region?: string; city?: string; timezone?: string };
   items: OrderItemDocument[];
   paidAt?: Date;
+  refundedAt?: Date;
+  refundAmountMinor?: number;
+  invoiceEmailSentAt?: Date;
+  refundEmailSentAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -50,6 +55,7 @@ const schema = new Schema<OrderDocument>({
   paymentProvider: { type: String, enum: ["stripe"], default: "stripe" },
   stripeCheckoutSessionId: { type: String, unique: true, sparse: true },
   stripePaymentIntentId: { type: String, unique: true, sparse: true },
+  stripeSubtotalMinor: { type: Number, min: 0, validate: Number.isInteger },
   checkoutKey: { type: String, required: true, unique: true },
   checkoutUrl: { type: String, select: false },
   currency: { type: String, required: true, uppercase: true },
@@ -61,6 +67,10 @@ const schema = new Schema<OrderDocument>({
   regionSnapshot: { country: String, region: String, city: String, timezone: String },
   items: { type: [itemSchema], required: true },
   paidAt: { type: Date, index: true },
+  refundedAt: Date,
+  refundAmountMinor: { type: Number, min: 0, validate: Number.isInteger },
+  invoiceEmailSentAt: Date,
+  refundEmailSentAt: Date,
 }, { timestamps: true });
 
 schema.index({ userId: 1, createdAt: -1 });
