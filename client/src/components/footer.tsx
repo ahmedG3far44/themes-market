@@ -90,7 +90,7 @@ export default function Footer() {
         </div>
 
         <div className="footer-bottom">
-          <span>© {year} Portfolio Market. All rights reserved.</span>
+          <span>© {year} Folio Kit. All rights reserved.</span>
           <span className="footer-dot" aria-hidden="true">·</span>
           <span>
             Developed by{" "}

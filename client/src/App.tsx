@@ -1,7 +1,7 @@
 import Home from './routes/home'
 import Protected from './components/protected'
 
-import { Link } from 'react-router-dom'
+import { Navigate } from 'react-router-dom'
 import { UserButton } from '@clerk/react'
 import { useAppAuth } from './context/auth-store'
 import { AuthProvider } from './context/auth-context'
@@ -14,6 +14,7 @@ import { CartProvider } from './context/cart-context'
 import { Spinner } from './components/ui/spinner'
 import Footer from './components/footer'
 import NotFoundPage from './routes/error/not-found'
+import { Logo } from './components/header'
 
 const InsightsPage = lazy(() => import('./routes/admin/insights'))
 const UsersPage = lazy(() => import('./routes/admin/users'))
@@ -99,7 +100,26 @@ function App() {
 
 function UserDashboard() {
   const { user } = useAppAuth();
-  return <div className="user-dashboard"><header><Link className="brand" to="/">PORTFOLIO <span>MARKET</span></Link><UserButton /></header><main><span className="eyebrow">Your account</span><h1>Welcome back, {user?.name}.</h1><p>Your account is active. Browse the theme library{user?.role === "customer" ? " or open your purchased downloads" : " or manage the marketplace"}.</p>{user?.role === "customer" && <Link className="secondary-button" to="/purchases">Open your library</Link>}{user?.role === "admin" && <Link className="primary-button" to="/admin">Open admin dashboard</Link>}</main></div>;
+
+  if (user?.role !== "admin") {
+    return <Navigate to="/" />;
+  }
+
+  return <div className='flex flex-col justify-between h-screen'>
+    <header className='container mx-auto flex justify-between items-center py-4'>
+      <Logo />
+
+      <div className="flex items-center gap-2">
+        <UserButton />
+      </div>
+    </header>
+    <main className='flex-1 flex flex-col justify-start items-center gap-2 mt-72'>
+      <span className="eyebrow">Your account</span>
+      <h1>Welcome back, {user?.name}.</h1>
+      <p>Your account is active. Browse the theme library</p>
+
+    </main>
+  </div>;
 }
 
 export default App

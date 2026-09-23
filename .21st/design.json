@@ -1,0 +1,19 @@
+{
+  "decisions": [
+    {
+      "date": "2026-09-23",
+      "scope": "marketing landing page",
+      "decision": "Lead with an immediate benefit-focused sales message and a lightweight editorial collage of real local theme previews. Keep the established ink, soft-white, and purple palette; use solid surfaces, restrained motion, compact radii, and direct conversion paths."
+    },
+    {
+      "date": "2026-09-23",
+      "scope": "marketing hero",
+      "decision": "Use a centered, text-first hero with two conversion actions and concise purchase benefits. Remove hero imagery and media preloads so the headline becomes the largest contentful element and can render without waiting for image decoding."
+    },
+    {
+      "date": "2026-09-23",
+      "scope": "marketing layout and motion",
+      "decision": "Align the header, landing sections, and footer to a shared 1180px responsive content line. Use reversible opacity-and-translate scroll reveals below the hero, while keeping the hero immediately visible and honoring reduced-motion preferences."
+    }
+  ]
+}
