@@ -6,7 +6,7 @@ import { CreditCard, Menu, Users, X, ShoppingBag, LayoutPanelTop, ChartSpline, F
 import { Logo } from "../header";
 
 const navigation = [
-  { to: "/admin", label: "Insights", icon: ChartSpline, end: true },
+  { to: "/admin", label: "Admin Insights", icon: ChartSpline, end: true },
   { to: "/admin/users", label: "Manage users", icon: Users },
   { to: "/admin/themes", label: "Portfolio themes", icon: LayoutPanelTop },
   { to: "/admin/content", label: "Site content", icon: FileText },

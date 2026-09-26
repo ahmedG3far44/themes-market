@@ -52,7 +52,6 @@ body {
   min-height: 100vh;
 }
 
-button,
 input,
 select,
 textarea {
@@ -2064,7 +2063,7 @@ tbody tr:hover {
 }
 
 .main-nav a:hover {
-  color: var(--ink);
+  color: var(--soft);
 }
 
 .cart-link {
@@ -2356,7 +2355,6 @@ tbody tr:hover {
 .select-visible {
   border: 0;
   background: var(--soft);
-  font-size: 0.72rem;
   font-weight: 700;
 }
 
@@ -5243,7 +5241,24 @@ tbody tr:hover {
 .provider-brand img {
   display: block;
   object-fit: cover;
-} 
+}
+
+.nav-admin-link {
+  color: var(--soft);
+  font-weight: 800;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+
+.nav-admin-link:hover {
+  color: #ffffff;
+}
+
+.nav-admin-link:active {
+  color: #ffffff;
+}
 
 .transaction-provider-cell {
   min-width: 112px;

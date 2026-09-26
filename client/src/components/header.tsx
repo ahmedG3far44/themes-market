@@ -14,13 +14,17 @@ const libraryLinks = [
 function Header() {
   const { count } = useCart();
   const { user } = useAppAuth();
+
   const location = useLocation();
 
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [openedAtPath, setOpenedAtPath] = useState(location.pathname);
+
   const libraryRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+
   const menuOpen = libraryOpen && openedAtPath === location.pathname;
+
   const libraryActive = location.pathname === "/purchase"
     || location.pathname === "/purchases"
     || location.pathname.startsWith("/orders")
@@ -95,7 +99,12 @@ function Header() {
             </div>
           </div>
         </div>}
-        {user?.role === "admin" && <Link className="text-sm font-bold flex space-x-2" to="/admin"><span><LayoutDashboardIcon size={18} /></span><span>Dashboard</span></Link>}
+        {user?.role === "admin" && <Link className="nav-admin-link" to="/admin">
+          <span>
+            <LayoutDashboardIcon size={18} />
+          </span>
+          <span>Dashboard</span>
+        </Link>}
       </Show>
     </nav>
 
