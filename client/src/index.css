@@ -5252,12 +5252,12 @@ tbody tr:hover {
   gap: 8px;
 }
 
-.nav-admin-link:hover {
-  color: #ffffff;
+.nav-admin-link:hover { 
+  color: var(--brand);
 }
 
 .nav-admin-link:active {
-  color: #ffffff;
+  color: var(--brand);
 }
 
 .transaction-provider-cell {
