@@ -139,7 +139,13 @@ export default function AdminOrderDetailPage() {
             {order.paymentExchangeRate && order.paymentCurrency && order.paymentCurrency !== order.currency && <div className="flex justify-between gap-4 text-xs">
               <dt>Exchange rate used</dt><dd className="shrink-0 font-medium text-zinc-700">1 {order.currency} = {order.paymentExchangeRate.toLocaleString(undefined, { maximumFractionDigits: 4 })} {order.paymentCurrency}</dd>
             </div>}
-            <div className="flex justify-between border-t border-zinc-200 mt-4 pt-4 font-semibold "><dt>Total</dt><dd >{money(order.totalMinor, order.currency)}</dd></div></dl></article>
+            <div className="flex justify-between border-t border-zinc-200 mt-4 pt-4 font-semibold ">
+              <dt>Total</dt>
+              <dd >{money(order.totalMinor, order.currency)}
+              </dd>
+            </div>
+          </dl>
+        </article>
       </aside>
     </div>
   </main>
