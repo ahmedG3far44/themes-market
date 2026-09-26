@@ -135,8 +135,42 @@ export async function setUserRole(id: string, role: UserRole) {
   return UserModel.findByIdAndUpdate(id, { role }, { returnDocument: "after", runValidators: true });
 }
 
+async function reconcileOrderTransactionStatuses() {
+  const candidates = await TransactionModel.find({
+    orderId: { $exists: true },
+    status: { $ne: "success" },
+  }).select("_id orderId status").lean();
+  if (!candidates.length) return;
+
+  const orders = await OrderModel.find({
+    _id: { $in: candidates.map((transaction) => transaction.orderId) },
+    status: { $in: ["paid", "failed"] },
+  }).select("_id status paidAt").lean();
+  const ordersById = new Map(orders.map((order) => [String(order._id), order]));
+  const operations = candidates.flatMap((transaction) => {
+    const order = transaction.orderId ? ordersById.get(String(transaction.orderId)) : undefined;
+    if (!order) return [];
+    const status: TransactionStatus = order.status === "paid" ? "success" : "declined";
+    if (transaction.status === status) return [];
+    return [{
+      updateOne: {
+        filter: { _id: transaction._id, status: transaction.status },
+        update: {
+          $set: {
+            status,
+            ...(status === "success" && order.paidAt ? { paidAt: order.paidAt } : {}),
+          },
+        },
+      },
+    }];
+  });
+  if (operations.length) await TransactionModel.bulkWrite(operations, { ordered: false });
+}
+
 
 export async function listTransactions(query: Record<string, unknown>) {
+  // Repair historical rows created before order and transaction status updates were ordered.
+  await reconcileOrderTransactionStatuses();
   const page = pageValue(query.page, 1);
   const pageSize = Math.min(100, pageValue(query.pageSize, 10));
   const filter: QueryFilter<TransactionDocument> = {};

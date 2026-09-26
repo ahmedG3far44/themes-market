@@ -86,7 +86,7 @@ export async function createMarketplaceStripeCheckout(input: MarketplaceCheckout
   const session = await stripeClient().checkout.sessions.create({
     mode: "payment",
     customer_email: input.customerEmail,
-    allow_promotion_codes: true,
+    allow_promotion_codes: false,
     billing_address_collection: "required",
     automatic_tax: { enabled: true },
     line_items: input.items.map((item) => ({

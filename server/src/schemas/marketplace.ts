@@ -63,7 +63,31 @@ export const uploadInitSchema = z.object({
 export const uploadPartSchema = z.object({ partNumber: z.number().int().min(1).max(10_000) });
 export const uploadCompleteSchema = z.object({ parts: z.array(z.object({ ETag: z.string().min(1), PartNumber: z.number().int().min(1) })).min(1) });
 export const cartItemSchema = z.object({ themeId: objectId });
-export const checkoutSchema = z.object({ idempotencyKey: z.string().uuid() }).strict();
+const discountCode = z.string().trim().min(2).max(32).regex(/^[A-Za-z0-9_-]+$/, "Use only letters, numbers, hyphens, or underscores").transform((value) => value.toUpperCase());
+export const discountCodeSchema = z.object({ code: discountCode }).strict();
+export const checkoutSchema = z.object({ idempotencyKey: z.string().uuid(), discountCode: discountCode.optional() }).strict();
+export const paymentSettingsSchema = z.object({
+  enabledProviders: z.array(z.enum(["stripe", "paypal", "paymob"])).min(1).max(3),
+  paymobUsdToEgpRate: z.number().finite().min(0.01).max(1000).optional(),
+}).strict();
+export const discountInputSchema = z.object({
+  code: discountCode,
+  type: z.enum(["percentage", "fixed"]),
+  percentageBps: z.number().int().min(1).max(9999).optional(),
+  amountMinor: z.number().int().min(1).max(100_000_000).optional(),
+  currency: z.string().trim().length(3).transform((value) => value.toUpperCase()).optional(),
+  usageLimit: z.number().int().min(1).max(1_000_000),
+  expiresAt: z.coerce.date().refine((value) => value.getTime() > Date.now(), "Expiration must be in the future"),
+  active: z.boolean().default(true),
+}).superRefine((value, context) => {
+  if (value.type === "percentage" && value.percentageBps === undefined) context.addIssue({ code: "custom", path: ["percentageBps"], message: "Percentage is required" });
+  if (value.type === "fixed" && value.amountMinor === undefined) context.addIssue({ code: "custom", path: ["amountMinor"], message: "Amount is required" });
+  if (value.type === "fixed" && value.currency === undefined) context.addIssue({ code: "custom", path: ["currency"], message: "Currency is required" });
+});
+export const discountStatusSchema = z.object({ active: z.boolean() }).strict();
+export const paypalCaptureSchema = z.object({
+  token: z.string().trim().min(8).max(80).regex(/^[A-Za-z0-9-]+$/, "Invalid PayPal token"),
+}).strict();
 export const idSchema = z.object({ id: objectId });
 export const stripeSessionSchema = z.object({ sessionId: z.string().trim().regex(/^cs_(?:test_|live_)?[A-Za-z0-9]+$/, "Invalid Stripe Checkout Session identifier") });
 export const slugSchema = z.object({ slug });

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import test from "node:test";
 import env from "../config/env.ts";
-import { checkoutSchema, themeInputSchema, themePatchSchema } from "../schemas/marketplace.ts";
+import { checkoutSchema, discountInputSchema, paypalCaptureSchema, paymentSettingsSchema, themeInputSchema, themePatchSchema } from "../schemas/marketplace.ts";
 import { validateStripeCheckoutAmounts, verifyStripeSignature } from "../services/stripe.service.ts";
 import { createCheckout } from "../services/checkout.service.ts";
 import { themeAssetIssues } from "../utils/theme-assets.ts";
@@ -10,6 +10,9 @@ import { AppError } from "../utils/app-error.ts";
 import { assertInvoicePaid, createInvoicePdf, type InvoiceData } from "../services/pdf.service.ts";
 import { createMarketingUnsubscribeToken, normalizeEmailSubject, renderEmailTemplate, verifyMarketingUnsubscribeToken } from "../services/email.service.ts";
 import { isSuccessfulFullRefund } from "../routes/webhook.route.ts";
+import { paypalDecimalToMinor, validatePaypalAmount } from "../services/paypal.service.ts";
+import { convertUsdMinorToEgp, convertUsdPaymobItemsToEgp, paymobHmacPayload, paymobIntegrationIdForCurrency, paymobSupportedCurrencies, validatePaymobTransaction, verifyPaymobHmac, type PaymobTransaction } from "../services/paymob.service.ts";
+import { allocateDiscount, calculateDiscountMinor } from "../services/discount.service.ts";
 
 const validTheme = { name: "Studio Grid", slug: "studio-grid", shortDescription: "A considered portfolio for creative studios.", description: "A complete, responsive portfolio theme designed for independent creative studios.", stack: ["React"], features: ["Responsive"], priceMinor: 4900, currency: "usd", version: "1.0.0", previewUrl: "https://preview.example.com", previewAssetId: "64b64c16e3a54f0012345670", imageAssetIds: ["64b64c16e3a54f0012345678", "64b64c16e3a54f0012345677"], videoAssetIds: ["64b64c16e3a54f0012345676"], sourceAssetId: "64b64c16e3a54f0012345679", featured: false };
 
@@ -63,8 +66,31 @@ test("Stripe checkout reconciliation accepts provider tax without weakening subt
 test("checkout does not accept a client-selected payment provider", () => {
   const idempotencyKey = "e1ec2cf8-53f9-4f3f-8e72-21c50c028295";
   assert.deepEqual(checkoutSchema.parse({ idempotencyKey }), { idempotencyKey });
+  assert.deepEqual(checkoutSchema.parse({ idempotencyKey, discountCode: " launch-15 " }), { idempotencyKey, discountCode: "LAUNCH-15" });
   assert.equal(checkoutSchema.safeParse({ idempotencyKey, provider: "stripe" }).success, false);
   assert.equal(checkoutSchema.safeParse({ idempotencyKey, provider: "paypal" }).success, false);
+});
+
+test("discount inputs enforce one safe value type, a future expiry, and payment-provider selection", () => {
+  const expiresAt = new Date(Date.now() + 86_400_000).toISOString();
+  assert.equal(discountInputSchema.safeParse({ code: "SAVE15", type: "percentage", percentageBps: 1500, usageLimit: 20, expiresAt, active: true }).success, true);
+  assert.equal(discountInputSchema.safeParse({ code: "SAVE10", type: "fixed", amountMinor: 1000, currency: "usd", usageLimit: 20, expiresAt, active: true }).success, true);
+  assert.equal(discountInputSchema.safeParse({ code: "SAVE15", type: "percentage", usageLimit: 20, expiresAt, active: true }).success, false);
+  assert.equal(discountInputSchema.safeParse({ code: "SAVE10", type: "fixed", amountMinor: 1000, usageLimit: 20, expiresAt, active: true }).success, false);
+  assert.equal(discountInputSchema.safeParse({ code: "EXPIRED", type: "percentage", percentageBps: 1500, usageLimit: 20, expiresAt: new Date(Date.now() - 1000), active: true }).success, false);
+  assert.deepEqual(paymentSettingsSchema.parse({ enabledProviders: ["stripe", "paypal", "paymob"] }), { enabledProviders: ["stripe", "paypal", "paymob"] });
+  assert.deepEqual(paymentSettingsSchema.parse({ enabledProviders: ["paymob"], paymobUsdToEgpRate: 50.75 }), { enabledProviders: ["paymob"], paymobUsdToEgpRate: 50.75 });
+  assert.equal(paymentSettingsSchema.safeParse({ enabledProviders: ["paymob"], paymobUsdToEgpRate: 0 }).success, false);
+  assert.equal(paymentSettingsSchema.safeParse({ enabledProviders: [] }).success, false);
+});
+
+test("discount calculation handles percentage and fixed amounts without changing the subtotal source", () => {
+  assert.equal(calculateDiscountMinor({ type: "percentage", percentageBps: 1500 }, 9800), 1470);
+  assert.equal(calculateDiscountMinor({ type: "fixed", amountMinor: 1000 }, 9800), 1000);
+  assert.throws(() => calculateDiscountMinor({ type: "fixed", amountMinor: 9800 }, 9800), (error: unknown) => error instanceof AppError && error.code === "DISCOUNT_EXCEEDS_TOTAL");
+  const allocations = allocateDiscount([{ priceMinor: 4900 }, { priceMinor: 5100 }], 1500);
+  assert.deepEqual(allocations, [735, 765]);
+  assert.equal(allocations.reduce((sum, amount) => sum + amount, 0), 1500);
 });
 
 test("administrator accounts cannot create marketplace checkouts", async () => {
@@ -94,6 +120,90 @@ test("invoice PDFs are generated only for paid orders", async () => {
   assert.ok(pdf.length > 2_000);
 });
 
+test("PayPal capture input and provider amounts are strictly validated", () => {
+  assert.deepEqual(paypalCaptureSchema.parse({ token: "7AB12345678901234" }), { token: "7AB12345678901234" });
+  assert.equal(paypalCaptureSchema.safeParse({ token: "bad token" }).success, false);
+  assert.equal(paypalDecimalToMinor("49.99"), 4999);
+  assert.equal(paypalDecimalToMinor("49.999"), null);
+  assert.doesNotThrow(() => validatePaypalAmount("49.99", "usd", 4999, "USD"));
+  assert.throws(() => validatePaypalAmount("49.98", "USD", 4999, "USD"), /amount does not match/);
+  assert.throws(() => validatePaypalAmount("49.99", "EUR", 4999, "USD"), /currency does not match/);
+});
+
+test("Paymob callbacks require the configured HMAC, integration, amount, and currency", () => {
+  const previousSecret = env.PAYMOB_HMAC_SECRET;
+  const previousIntegration = env.PAYMOB_INTEGRATION_ID;
+  const previousIntegrations = env.PAYMOB_INTEGRATION_IDS;
+  const previousCurrency = env.PAYMOB_CURRENCY;
+  env.PAYMOB_HMAC_SECRET = "paymob-test-hmac-secret";
+  env.PAYMOB_INTEGRATION_ID = "4097558";
+  env.PAYMOB_INTEGRATION_IDS = "";
+  env.PAYMOB_CURRENCY = "USD";
+  const transaction: PaymobTransaction = {
+    id: 192036465,
+    pending: false,
+    amount_cents: 4999,
+    success: true,
+    is_auth: false,
+    is_capture: false,
+    is_standalone_payment: true,
+    is_voided: false,
+    is_refunded: false,
+    is_3d_secure: true,
+    integration_id: 4097558,
+    has_parent_transaction: false,
+    order: { id: 217503754 },
+    created_at: "2026-09-26T09:30:00Z",
+    currency: "USD",
+    error_occured: false,
+    owner: 302852,
+    source_data: { pan: "2346", sub_type: "MasterCard", type: "card" },
+  };
+  try {
+    const hmac = createHmac("sha512", env.PAYMOB_HMAC_SECRET).update(paymobHmacPayload(transaction)).digest("hex");
+    assert.equal(verifyPaymobHmac(transaction, hmac), true);
+    assert.equal(verifyPaymobHmac({ ...transaction, amount_cents: 5000 }, hmac), false);
+    assert.doesNotThrow(() => validatePaymobTransaction(transaction, 4999, "usd"));
+    assert.throws(() => validatePaymobTransaction(transaction, 4900, "USD"), /amount does not match/);
+    assert.throws(() => validatePaymobTransaction({ ...transaction, integration_id: 1 }, 4999, "USD"), /integration does not match/);
+  } finally {
+    env.PAYMOB_HMAC_SECRET = previousSecret;
+    env.PAYMOB_INTEGRATION_ID = previousIntegration;
+    env.PAYMOB_INTEGRATION_IDS = previousIntegrations;
+    env.PAYMOB_CURRENCY = previousCurrency;
+  }
+});
+
+test("Paymob selects an Integration ID by cart currency", () => {
+  const previousIntegration = env.PAYMOB_INTEGRATION_ID;
+  const previousIntegrations = env.PAYMOB_INTEGRATION_IDS;
+  const previousCurrency = env.PAYMOB_CURRENCY;
+  try {
+    env.PAYMOB_INTEGRATION_ID = "111";
+    env.PAYMOB_CURRENCY = "EGP";
+    env.PAYMOB_INTEGRATION_IDS = "EGP:222, USD:333, invalid";
+    assert.equal(paymobIntegrationIdForCurrency("egp"), "222");
+    assert.equal(paymobIntegrationIdForCurrency("USD"), "333");
+    assert.equal(paymobIntegrationIdForCurrency("EUR"), undefined);
+    assert.deepEqual(paymobSupportedCurrencies(), ["EGP", "USD"]);
+  } finally {
+    env.PAYMOB_INTEGRATION_ID = previousIntegration;
+    env.PAYMOB_INTEGRATION_IDS = previousIntegrations;
+    env.PAYMOB_CURRENCY = previousCurrency;
+  }
+});
+
+test("Paymob converts USD totals and line items to exact EGP minor units", () => {
+  assert.equal(convertUsdMinorToEgp(4900, 50.75), 248675);
+  const items = convertUsdPaymobItemsToEgp([
+    { name: "Studio Grid", unitAmountMinor: 4410 },
+    { name: "Motion Folio", unitAmountMinor: 4410 },
+  ], 50.75);
+  assert.equal(items.reduce((sum, item) => sum + item.unitAmountMinor * (item.quantity ?? 1), 0), convertUsdMinorToEgp(8820, 50.75));
+  assert.ok(items.every((item) => item.quantity === 1 && Number.isInteger(item.unitAmountMinor) && item.unitAmountMinor > 0));
+  assert.throws(() => convertUsdMinorToEgp(4900, 0), /exchange rate is invalid/);
+});
+
 test("email templates render safe event-specific content", () => {
   for (const type of ["welcome", "invoice", "refund", "promotion"] as const) {
     const rendered = renderEmailTemplate(type, { name: "<Demo>", orderNumber: "ORD-TEST", amountMinor: 5292, currency: "USD" });
@@ -118,10 +228,42 @@ test("invoice emails contain Gmail order markup and a purchase link", () => {
     items: [{ name: "Studio Grid", priceMinor: 4900 }],
     orderUrl: "https://foliokit.store/purchases",
     orderDate: "2026-09-21T12:00:00.000Z",
+    discount: { code: "LAUNCH15", type: "percentage", percentageBps: 1500, appliedAmountMinor: 735 },
   });
   assert.match(rendered.html, /application\/ld\+json/);
   assert.match(rendered.html, /"@type":"Order"/);
   assert.match(rendered.html, /https:\/\/foliokit\.store\/purchases/);
+  assert.match(rendered.html, /LAUNCH15/);
+  assert.match(rendered.html, /15% off/);
+  assert.match(rendered.html, /−\$7\.35/);
+  assert.match(rendered.text, /Discount LAUNCH15 \(15% off\): -\$7\.35/);
+});
+
+test("invoice emails describe fixed-amount discounts", () => {
+  const rendered = renderEmailTemplate("invoice", {
+    orderNumber: "ORD-FIXED",
+    amountMinor: 3900,
+    currency: "USD",
+    discount: { code: "SAVE10", type: "fixed", amountMinor: 1000, appliedAmountMinor: 1000 },
+  });
+  assert.match(rendered.html, /SAVE10/);
+  assert.match(rendered.html, /\$10\.00 off/);
+  assert.match(rendered.text, /Discount SAVE10 \(\$10\.00 off\): -\$10\.00/);
+});
+
+test("invoice emails show the actual EGP amount charged by Paymob", () => {
+  const rendered = renderEmailTemplate("invoice", {
+    orderNumber: "ORD-PAYMOB",
+    amountMinor: 4900,
+    currency: "USD",
+    paymentAmountMinor: 248675,
+    paymentCurrency: "EGP",
+    paymentExchangeRate: 50.75,
+  });
+  assert.match(rendered.html, /CHARGED BY PAYMOB/);
+  assert.match(rendered.html, /EGP/);
+  assert.match(rendered.text, /Paymob charged:/);
+  assert.match(rendered.text, /1 USD = 50\.75 EGP/);
 });
 
 test("marketing unsubscribe tokens reject tampering", () => {

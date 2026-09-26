@@ -1,6 +1,6 @@
 # Portfolio Theme Marketplace
 
-A single-vendor marketplace for production-ready portfolio templates. Visitors browse published themes, customers buy securely through Stripe, and administrators manage themes, users, orders, email promotions, uploads, and revenue analytics.
+A single-vendor marketplace for production-ready portfolio templates. Visitors browse published themes, customers buy securely through Stripe, PayPal, or Paymob, and administrators manage themes, users, orders, email promotions, uploads, and revenue analytics.
 
 ## Run locally with Docker
 
@@ -52,6 +52,8 @@ For upgrades, pull or copy the new source and run the production `up -d --build`
 ### Production integration URLs
 
 - Stripe webhook: `https://your-domain.example/api/v1/webhooks/stripe`
+- PayPal webhook: `https://your-domain.example/api/v1/webhooks/paypal`
+- Paymob webhook: `https://your-domain.example/api/v1/webhooks/paymob`
 - Live health check: `https://your-domain.example/health/live`
 - Readiness check: `https://your-domain.example/health/ready`
 
@@ -86,6 +88,10 @@ The seed is idempotent and deliberately fails if it cannot resolve a real Clerk 
 - The R2 bucket stays private. The API returns temporary signed preview URLs for images and videos; theme ZIP keys are never returned, and downloads always use shorter-lived signed URLs.
 - Set Stripe's webhook endpoint to `POST /api/v1/webhooks/stripe` for `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, `charge.refunded`, `refund.created`, and `refund.updated`.
 - Only a verified Stripe webhook with the expected amount and currency grants entitlements. Stripe returns customers to `/purchase`, which shows a processing state and polls until the webhook marks the order paid.
+- For PayPal, create a REST app and set its client ID and secret as `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET`. Use `PAYPAL_ENVIRONMENT=sandbox` while testing and switch it to `live` only with the matching live credentials.
+- Register `POST /api/v1/webhooks/paypal` on the same PayPal REST app, subscribe to `PAYMENT.CAPTURE.COMPLETED`, `PAYMENT.CAPTURE.DENIED`, and `PAYMENT.CAPTURE.REFUNDED`, and save the registered listener ID as `PAYPAL_WEBHOOK_ID`. PayPal returns through `/purchase`; the API captures the approved order and the verified webhook remains the asynchronous source of truth and refund handler.
+- For Paymob Unified Checkout, set `PAYMOB_SECRET_KEY`, `PAYMOB_PUBLIC_KEY`, and `PAYMOB_HMAC_SECRET` from the same Test or Live mode. For one integration, set `PAYMOB_INTEGRATION_ID` plus its exact `PAYMOB_CURRENCY` (for example `EGP`). For more than one currency, set `PAYMOB_INTEGRATION_IDS=EGP:123456,USD:789012`; this mapping takes precedence. Copy an **online Payment Integration ID** from Developers → Payment Integrations after selecting the same Test/Live mode as the keys; an iframe ID or an ID from the other mode is rejected by the Intention API. Set `PAYMOB_BASE_URL` to your regional Paymob origin (the default is Egypt) and `PUBLIC_API_URL` to the public HTTPS origin serving the API.
+- Configure Paymob's processed callback as `POST /api/v1/webhooks/paymob`. The application also sends that URL as the intention notification URL, verifies the SHA-512 HMAC, and checks the stored order amount, currency, integration ID, and order reference before granting downloads.
 - Paid customers can download an invoice from `GET /api/v1/orders/:id/invoice`; administrators can use `GET /api/v1/admin/orders/:id/invoice`. Pending, failed, and refunded orders do not produce invoices.
 
 ## Admin workspace

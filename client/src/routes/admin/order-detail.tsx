@@ -13,6 +13,21 @@ import { ErrorState } from "../error/error";
 
 interface AdminOrder extends OrderType { user: Pick<IUser, "name" | "email" | "provider"> }
 
+const paymentProviderLabels = { stripe: "Stripe", paypal: "PayPal", paymob: "Paymob" } as const;
+
+function discountDescription(order: OrderType): string {
+  const discount = order.discountSnapshot;
+  if (!discount) return "Discount";
+  if (discount.type === "percentage" || discount.percentageBps !== undefined || discount.percentage !== undefined) {
+    const percentage = discount.percentageBps !== undefined ? discount.percentageBps / 100 : discount.percentage;
+    return `Discount (${discount.code} · ${percentage?.toLocaleString() ?? 0}% off)`;
+  }
+  if (discount.type === "fixed" && discount.amountMinor !== undefined) {
+    return `Discount (${discount.code} · ${money(discount.amountMinor, discount.currency ?? order.currency)} off)`;
+  }
+  return `Discount (${discount.code})`;
+}
+
 export default function AdminOrderDetailPage() {
   const { id } = useParams();
 
@@ -97,7 +112,7 @@ export default function AdminOrderDetailPage() {
           <small className="flex items-center gap-2 my-2">
 
             <span className="capitalize my-2">
-              <img className="w-5 h-5" src={`/${order.user?.provider?.toLocaleLowerCase().trim()}.svg`} alt={order.user?.provider} />
+              <img className="w-4 h-4" src={`/providers/${order.user?.provider?.toLocaleLowerCase().trim()}.svg`} alt={order.user?.provider} />
             </span>
 
             <p>Account provider</p>
@@ -109,8 +124,20 @@ export default function AdminOrderDetailPage() {
             <div className="flex justify-between text-xs">
               <dt>Subtotal</dt><dd className="text-zinc-500 font-normal">{money(order.subtotalMinor, order.currency)}</dd>
             </div>
+            {order.discountMinor > 0 && <div className="flex justify-between gap-4 text-xs">
+              <dt className="min-w-0 break-words">{discountDescription(order)}</dt><dd className="shrink-0 text-rose-600 font-normal">−{money(order.discountMinor, order.currency)}</dd>
+            </div>}
             {order.taxMinor > 0 && <div className="flex justify-between text-xs">
               <dt>Tax</dt><dd className="text-green-800 font-normal ">+{money(order.taxMinor, order.currency)}</dd>
+            </div>}
+            {order.status === "paid" && <div className="flex justify-between gap-4 text-xs">
+              <dt>Payment provider</dt><dd className="shrink-0 font-medium text-zinc-700">{paymentProviderLabels[order.paymentProvider]}</dd>
+            </div>}
+            {order.paymentCurrency && order.paymentCurrency !== order.currency && order.paymentAmountMinor !== undefined && <div className="flex justify-between gap-4 text-xs">
+              <dt>Charged by provider</dt><dd className="shrink-0 font-medium text-zinc-700">{money(order.paymentAmountMinor, order.paymentCurrency)}</dd>
+            </div>}
+            {order.paymentExchangeRate && order.paymentCurrency && order.paymentCurrency !== order.currency && <div className="flex justify-between gap-4 text-xs">
+              <dt>Exchange rate used</dt><dd className="shrink-0 font-medium text-zinc-700">1 {order.currency} = {order.paymentExchangeRate.toLocaleString(undefined, { maximumFractionDigits: 4 })} {order.paymentCurrency}</dd>
             </div>}
             <div className="flex justify-between border-t border-zinc-200 mt-4 pt-4 font-semibold "><dt>Total</dt><dd >{money(order.totalMinor, order.currency)}</dd></div></dl></article>
       </aside>

@@ -12,9 +12,19 @@ export interface EmailTemplateVariables {
   orderNumber?: string;
   amountMinor?: number;
   currency?: string;
+  paymentAmountMinor?: number;
+  paymentCurrency?: string;
+  paymentExchangeRate?: number;
   items?: Array<{ name: string; priceMinor: number }>;
   orderUrl?: string;
   orderDate?: string;
+  discount?: {
+    code: string;
+    type?: "percentage" | "fixed";
+    percentageBps?: number;
+    amountMinor?: number;
+    appliedAmountMinor: number;
+  };
   offerTitle?: string;
   offerDescription?: string;
   discountDetails?: string;
@@ -165,6 +175,28 @@ export function renderEmailTemplate(type: EmailTemplateType, variables: EmailTem
     const subject = normalizeEmailSubject(`Payment receipt and invoice — ${rawOrderNumber}`, "Your Foliokit payment receipt");
     const orderUrl = variables.orderUrl || `${primaryClientUrl()}/purchases`;
     const items = variables.items?.length ? variables.items : [{ name: "Foliokit portfolio theme", priceMinor: amountMinor }];
+    const discount = variables.discount && variables.discount.appliedAmountMinor > 0 ? variables.discount : undefined;
+    const discountValue = discount?.type === "percentage" && discount.percentageBps
+      ? `${(discount.percentageBps / 100).toLocaleString("en-US", { maximumFractionDigits: 2 })}% off`
+      : discount?.type === "fixed" && discount.amountMinor
+        ? `${money(discount.amountMinor, currency)} off`
+        : discount ? `${money(discount.appliedAmountMinor, currency)} off` : "";
+    const discountLabel = discount ? `${escapeHtml(discount.code)} · ${escapeHtml(discountValue)}` : "";
+    const discountHtml = discount
+      ? `<tr><td style="padding:0 14px 14px;color:#17785a;font-size:12px">DISCOUNT <span style="font-weight:700">(${discountLabel})</span></td><td style="padding:0 14px 14px;text-align:right;color:#17785a;font-weight:700">−${escapeHtml(money(discount.appliedAmountMinor, currency))}</td></tr>`
+      : "";
+    const discountText = discount ? ` Discount ${discount.code} (${discountValue}): -${money(discount.appliedAmountMinor, currency)}.` : "";
+    const paymentCurrency = variables.paymentCurrency?.toUpperCase();
+    const convertedPayment = paymentCurrency && paymentCurrency !== currency && variables.paymentAmountMinor !== undefined
+      ? money(variables.paymentAmountMinor, paymentCurrency)
+      : undefined;
+    const exchangeRate = convertedPayment && variables.paymentExchangeRate
+      ? ` (1 ${currency} = ${variables.paymentExchangeRate.toLocaleString("en-US", { maximumFractionDigits: 4 })} ${paymentCurrency})`
+      : "";
+    const convertedPaymentHtml = convertedPayment
+      ? `<tr><td style="padding:0 14px 14px;color:#69716d;font-size:12px">CHARGED BY PAYMOB${escapeHtml(exchangeRate)}</td><td style="padding:0 14px 14px;text-align:right;font-weight:700">${escapeHtml(convertedPayment)}</td></tr>`
+      : "";
+    const convertedPaymentText = convertedPayment ? ` Paymob charged: ${convertedPayment}${exchangeRate}.` : "";
     const orderMarkup = {
       "@context": "https://schema.org",
       "@type": "Order",
@@ -184,8 +216,8 @@ export function renderEmailTemplate(type: EmailTemplateType, variables: EmailTem
     };
     return {
       subject,
-      html: emailShell(subject, "Payment confirmed", `<p style="margin:0 0 18px">Hi ${name},</p><p style="margin:0 0 22px">Your payment was successful. A PDF invoice with the full order breakdown is attached.</p><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f7f5;border-radius:9px"><tr><td style="padding:14px;color:#69716d;font-size:12px">ORDER</td><td style="padding:14px;text-align:right;font-weight:700">${orderNumber}</td></tr><tr><td style="padding:0 14px 14px;color:#69716d;font-size:12px">TOTAL PAID</td><td style="padding:0 14px 14px;text-align:right;font-weight:700">${total}</td></tr></table>`, { label: "View purchases", url: orderUrl }, { head: `<script type="application/ld+json">${jsonLd(orderMarkup)}</script>` }),
-      text: `Hi ${rawName},\n\nPayment confirmed for ${rawOrderNumber}. Total paid: ${money(amountMinor, currency)}. Your PDF invoice is attached.\n\nView purchases: ${orderUrl}`,
+      html: emailShell(subject, "Payment confirmed", `<p style="margin:0 0 18px">Hi ${name},</p><p style="margin:0 0 22px">Your payment was successful. A PDF invoice with the full order breakdown is attached.</p><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f7f5;border-radius:9px"><tr><td style="padding:14px;color:#69716d;font-size:12px">ORDER</td><td style="padding:14px;text-align:right;font-weight:700">${orderNumber}</td></tr>${discountHtml}<tr><td style="padding:0 14px 14px;color:#69716d;font-size:12px">ORDER TOTAL</td><td style="padding:0 14px 14px;text-align:right;font-weight:700">${total}</td></tr>${convertedPaymentHtml}</table>`, { label: "View purchases", url: orderUrl }, { head: `<script type="application/ld+json">${jsonLd(orderMarkup)}</script>` }),
+      text: `Hi ${rawName},\n\nPayment confirmed for ${rawOrderNumber}.${discountText} Order total: ${money(amountMinor, currency)}.${convertedPaymentText} Your PDF invoice is attached.\n\nView purchases: ${orderUrl}`,
     };
   }
 

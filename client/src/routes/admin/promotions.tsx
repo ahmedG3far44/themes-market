@@ -90,7 +90,7 @@ export default function PromotionsPage() {
   };
 
   return <main className="admin-page">
-    <PageHeader eyebrow="Customer communication" title="Email promotions" description="Choose active customers, write the offer, and send a branded campaign. Promotion eligibility and actual discounts remain managed by Stripe." />
+    <PageHeader eyebrow="Customer communication" title="Email promotions" description="Choose active customers, write the offer, and send a branded campaign. Create redeemable codes in Payments & discounts before announcing them." />
     {(customerError || campaignAction.error || testAction.error) && <ErrorMessage message={(customerError || campaignAction.error || testAction.error)!} onDismiss={() => { clearCustomerError(); campaignAction.clearError(); testAction.clearError(); }} />}
     {notice && <div className="success-message" role="status"><Check size={17} /><span>{notice}</span><button onClick={() => setNotice("")} aria-label="Dismiss"><X size={15} /></button></div>}
 
@@ -100,7 +100,7 @@ export default function PromotionsPage() {
         <div className="form-stack">
           <label>Offer title<input required maxLength={100} value={campaign.offerTitle} onChange={(event) => setCampaign((current) => ({ ...current, offerTitle: event.target.value }))} placeholder="Save on your next portfolio launch" /></label>
           <label>Offer description<textarea required rows={5} maxLength={1200} value={campaign.offerDescription} onChange={(event) => setCampaign((current) => ({ ...current, offerDescription: event.target.value }))} placeholder="Tell customers why this offer is useful and what is included." /></label>
-          <label>Offer or discount details<input required maxLength={300} value={campaign.discountDetails} onChange={(event) => setCampaign((current) => ({ ...current, discountDetails: event.target.value }))} placeholder="20% off eligible themes at Stripe Checkout" /><small>Configure any redeemable promotion code or automatic discount in Stripe.</small></label>
+          <label>Offer or discount details<input required maxLength={300} value={campaign.discountDetails} onChange={(event) => setCampaign((current) => ({ ...current, discountDetails: event.target.value }))} placeholder="Use LAUNCH20 for 20% off before Sunday" /><small>Create and activate the code in Payments & discounts before sending this campaign.</small></label>
           <div className="form-grid">
             <label>Button label<input required maxLength={40} value={campaign.ctaLabel} onChange={(event) => setCampaign((current) => ({ ...current, ctaLabel: event.target.value }))} /></label>
             <label>Expiry text (optional)<input maxLength={80} value={campaign.expiresAt} onChange={(event) => setCampaign((current) => ({ ...current, expiresAt: event.target.value }))} placeholder="Sunday at 11:59 PM" /></label>

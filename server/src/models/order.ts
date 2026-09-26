@@ -16,10 +16,15 @@ export interface OrderDocument {
   orderNumber: string;
   userId: Types.ObjectId;
   status: "pending" | "paid" | "failed" | "refunded";
-  paymentProvider: "stripe";
+  paymentProvider: "stripe" | "paypal" | "paymob";
   stripeCheckoutSessionId?: string;
   stripePaymentIntentId?: string;
   stripeSubtotalMinor?: number;
+  paypalToken?: string;
+  paypalTransactionId?: string;
+  paymobIntentionId?: string;
+  paymobOrderId?: string;
+  paymobTransactionId?: string;
   checkoutKey: string;
   checkoutUrl?: string;
   currency: string;
@@ -29,7 +34,16 @@ export interface OrderDocument {
   totalMinor: number;
   paymentAmountMinor?: number;
   paymentCurrency?: string;
-  discountSnapshot?: { code: string; percentage: number };
+  paymentExchangeRate?: number;
+  discountSnapshot?: {
+    discountId?: Types.ObjectId;
+    code: string;
+    type?: "percentage" | "fixed";
+    percentage?: number;
+    percentageBps?: number;
+    amountMinor?: number;
+    currency?: string;
+  };
   customerSnapshot?: { name: string; email: string; phone?: string };
   regionSnapshot?: { country?: string; region?: string; city?: string; timezone?: string };
   items: OrderItemDocument[];
@@ -52,17 +66,31 @@ const schema = new Schema<OrderDocument>({
   orderNumber: { type: String, required: true, unique: true },
   userId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
   status: { type: String, enum: ["pending", "paid", "failed", "refunded"], default: "pending", index: true },
-  paymentProvider: { type: String, enum: ["stripe"], default: "stripe" },
+  paymentProvider: { type: String, enum: ["stripe", "paypal", "paymob"], default: "stripe" },
   stripeCheckoutSessionId: { type: String, unique: true, sparse: true },
   stripePaymentIntentId: { type: String, unique: true, sparse: true },
   stripeSubtotalMinor: { type: Number, min: 0, validate: Number.isInteger },
+  paypalToken: { type: String, unique: true, sparse: true },
+  paypalTransactionId: { type: String, unique: true, sparse: true },
+  paymobIntentionId: { type: String, unique: true, sparse: true },
+  paymobOrderId: { type: String, unique: true, sparse: true },
+  paymobTransactionId: { type: String, unique: true, sparse: true },
   checkoutKey: { type: String, required: true, unique: true },
   checkoutUrl: { type: String, select: false },
   currency: { type: String, required: true, uppercase: true },
   subtotalMinor: { type: Number, required: true }, discountMinor: { type: Number, required: true }, taxMinor: { type: Number, required: true, default: 0 }, totalMinor: { type: Number, required: true },
   paymentAmountMinor: { type: Number, min: 0, validate: Number.isInteger },
   paymentCurrency: { type: String, uppercase: true },
-  discountSnapshot: { code: String, percentage: Number },
+  paymentExchangeRate: { type: Number, min: 0.01, max: 1000 },
+  discountSnapshot: {
+    discountId: { type: Schema.Types.ObjectId, ref: "Discount" },
+    code: String,
+    type: { type: String, enum: ["percentage", "fixed"] },
+    percentage: Number,
+    percentageBps: Number,
+    amountMinor: Number,
+    currency: String,
+  },
   customerSnapshot: { name: String, email: String, phone: String },
   regionSnapshot: { country: String, region: String, city: String, timezone: String },
   items: { type: [itemSchema], required: true },

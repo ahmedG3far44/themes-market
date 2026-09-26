@@ -22,7 +22,7 @@ const ink = "#1A1A1A";
 const muted = "#6B6B6B";
 const line = "#E2E2E2";
 const soft = "#F5F5F5";
-const negative = "#A33A3A";
+const negative = "#006400";
 
 const require = createRequire(import.meta.url);
 const fonts = {
@@ -100,6 +100,7 @@ export function createInvoicePdf(data: InvoiceData): Promise<Buffer> {
   doc.text(`Currency: ${clean(data.order.currency).toUpperCase()}`, 320, 239);
   if (data.order.paymentCurrency && data.order.paymentCurrency !== data.order.currency) {
     doc.text(`Charged: ${amount(data.order.paymentAmountMinor ?? data.order.totalMinor, data.order.paymentCurrency)}`, 320, 255, { width: 225 });
+    if (data.order.paymentExchangeRate) doc.text(`Rate: 1 ${clean(data.order.currency)} = ${data.order.paymentExchangeRate.toLocaleString("en-US", { maximumFractionDigits: 4 })} ${clean(data.order.paymentCurrency)}`, 320, 271, { width: 225 });
   }
 
   let y = 322;
@@ -152,7 +153,7 @@ export function createInvoicePdf(data: InvoiceData): Promise<Buffer> {
   doc.moveTo(totalsX, y - 5).lineTo(right, y - 5).lineWidth(1).strokeColor(line).stroke();
 
   y += 24;
-  totalRow("Total paid", amount(data.order.totalMinor, data.order.currency), true, ink);
+  totalRow(data.order.paymentCurrency && data.order.paymentCurrency !== data.order.currency ? "Order total" : "Total paid", amount(data.order.totalMinor, data.order.currency), true, ink);
   doc.moveTo(totalsX, y - 5).lineTo(right, y - 5).lineWidth(1).strokeColor(line);
 
   doc.fillColor(muted).font("Helvetica").fontSize(8).text("Payment status: PAID", 48, y - 22);

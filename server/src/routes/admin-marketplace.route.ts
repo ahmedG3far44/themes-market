@@ -1,13 +1,14 @@
 import { raw, Router } from "express";
 import { requireAdmin, requireDatabaseUser } from "../middlewares/auth.ts";
 import { rateLimit } from "../middlewares/rate-limit.ts";
-import { idSchema, parseOrThrow, themeInputSchema, themePatchSchema, uploadCompleteSchema, uploadInitSchema, uploadPartSchema } from "../schemas/marketplace.ts";
+import { discountInputSchema, discountStatusSchema, idSchema, parseOrThrow, paymentSettingsSchema, themeInputSchema, themePatchSchema, uploadCompleteSchema, uploadInitSchema, uploadPartSchema } from "../schemas/marketplace.ts";
 import { audit } from "../services/audit.service.ts";
 import { getAdminOrder, listAdminOrders, marketplaceInsights, themeSales } from "../services/order.service.ts";
 import { archiveOrDeleteTheme, createTheme, getAdminTheme, listAdminThemes, publishTheme, updateTheme } from "../services/theme.service.ts";
 import { cancelUpload, completeUpload, initiateUpload, uploadPart } from "../services/upload.service.ts";
 import { AppError } from "../utils/app-error.ts";
 import { paidOrderInvoiceForAdmin } from "../services/pdf.service.ts";
+import { createDiscount, listDiscounts, paymentSettings, updateDiscount, updatePaymentSettings } from "../services/discount.service.ts";
 
 const router = Router(); router.use(requireDatabaseUser, requireAdmin);
 
@@ -34,6 +35,39 @@ router.get("/orders/:id/invoice", rateLimit("admin-invoice", 30, 60_000, true), 
     res.setHeader("Content-Disposition", `attachment; filename="${invoice.filename}"`);
     res.setHeader("Cache-Control", "private, no-store");
     res.send(invoice.pdf);
+  } catch (error) { next(error); }
+});
+
+router.get("/payment-settings", async (_req, res, next) => {
+  try { res.json({ success: true, data: await paymentSettings(true) }); } catch (error) { next(error); }
+});
+router.put("/payment-settings", async (req, res, next) => {
+  try {
+    const { enabledProviders, paymobUsdToEgpRate } = parseOrThrow(paymentSettingsSchema, req.body);
+    const before = await paymentSettings(true);
+    const updated = await updatePaymentSettings(enabledProviders, paymobUsdToEgpRate);
+    await audit(req, "payment_settings.update", "payment_settings", "default", before, updated);
+    res.json({ success: true, data: updated, message: "Payment methods updated" });
+  } catch (error) { next(error); }
+});
+router.get("/discounts", async (_req, res, next) => {
+  try { res.json({ success: true, data: await listDiscounts() }); } catch (error) { next(error); }
+});
+router.post("/discounts", async (req, res, next) => {
+  try {
+    const input = parseOrThrow(discountInputSchema, req.body);
+    const discount = await createDiscount(input, req.currentUser!._id);
+    await audit(req, "discount.create", "discount", discount.id, undefined, discount);
+    res.status(201).json({ success: true, data: discount, message: "Discount code created" });
+  } catch (error) { next(error); }
+});
+router.patch("/discounts/:id", async (req, res, next) => {
+  try {
+    const { id } = parseOrThrow(idSchema, req.params);
+    const input = parseOrThrow(discountStatusSchema, req.body);
+    const discount = await updateDiscount(id, input);
+    await audit(req, input.active ? "discount.activate" : "discount.deactivate", "discount", id, undefined, discount);
+    res.json({ success: true, data: discount, message: input.active ? "Discount activated" : "Discount paused" });
   } catch (error) { next(error); }
 });
 

@@ -12,4 +12,7 @@ export default defineConfig({
       '@shared': path.resolve(import.meta.dirname, '../shared'),
     },
   },
+  // server: {
+  //   allowedHosts: ['.ngrok-free.app']
+  // }
 })

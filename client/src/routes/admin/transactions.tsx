@@ -1,7 +1,9 @@
-import { CalendarDays, Search } from "lucide-react";
+import { CalendarDays, HandCoins, Search } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import type { IUser, PaginatedResponse, PlanType, TransactionStatus, TransactionType } from "@shared/types";
 import { PageHeader } from "../../components/admin/page-header";
+import { PaymentProviderMark } from "../../components/payment-provider-mark";
+import { paymentProviderMeta } from "../../components/payment-provider";
 import { ErrorMessage } from "../../components/ui/error-message";
 import { TableSkeleton } from "../../components/ui/skeleton";
 import { useAsync } from "../../hooks/use-async";
@@ -27,7 +29,7 @@ export default function TransactionsPage() {
 
     {error && <ErrorMessage message={error} onDismiss={clearError} />}
 
-    <section className="panel data-panel">
+    <section className="panel data-panel transactions-list-panel">
       <div className="filters-row">
         <form className="search-box" onSubmit={submit}>
           <Search size={18} />
@@ -76,7 +78,16 @@ export default function TransactionsPage() {
                   <strong>{transaction.planId?.name ?? transaction.product?.name ?? "Custom purchase"}</strong>
                 </td>
                 <td>
-                  {transaction.provider === "stripe" ? <img width={40} height={40} src="/stripe.png" alt="Stripe" /> : <span>{transaction.provider}</span>}
+                  <div className="transaction-provider-cell">
+                    {transaction.provider === "manual" ? (
+                      <span className="provider-brand transaction-provider-manual" aria-hidden="true"><HandCoins size={20} /></span>
+                    ) : (
+                      <span className={`provider-brand provider-brand-${transaction.provider}`} aria-hidden="true">
+                        <PaymentProviderMark provider={transaction.provider} />
+                      </span>
+                    )}
+                    
+                  </div>
                 </td>
                 <td>
                   <strong>{money(transaction.amountMinor ?? Math.round(transaction.amount * 100))}</strong>

@@ -18,7 +18,7 @@ const fallbackRefund = `<p>We sell instant digital goods. Because delivery is im
 <h2>3. How to request</h2>
 <p>Message us with order ID, email and reason within 7 days of purchase. We reply within 2 business days. Contact via <a href="https://linkedin.com/in/ahmedg3far44" target="_blank" rel="noreferrer">linkedin.com/in/ahmedg3far44</a> or support email.</p>
 <h2>4. Payment reversals</h2>
-<p>Approved refunds are issued to the original payment method. Stripe refunds typically appear in 5–10 business days. Currency conversion fees, if any, are not refundable.</p>
+<p>Approved refunds are issued to the original payment method. Stripe and PayPal processing times vary by funding source. Currency conversion fees, if any, are not refundable.</p>
 <h2>5. Download abuse</h2>
 <p>Each order includes 5 secure downloads. Exceeding or sharing download links may void refund eligibility.</p>`;
 

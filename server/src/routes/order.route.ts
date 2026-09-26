@@ -1,19 +1,57 @@
 import { Router } from "express";
 import { requireCustomer, requireDatabaseUser } from "../middlewares/auth.ts";
 import { rateLimit } from "../middlewares/rate-limit.ts";
-import { checkoutSchema, idSchema, parseOrThrow, stripeSessionSchema } from "../schemas/marketplace.ts";
-import { createCheckout } from "../services/checkout.service.ts";
+import { checkoutSchema, idSchema, parseOrThrow, paypalCaptureSchema, stripeSessionSchema } from "../schemas/marketplace.ts";
+import { capturePaypalCheckout, createCheckout } from "../services/checkout.service.ts";
 import { getOrderByStripeSessionForUser, getOrderForUser, issueDownload, listOrdersForUser, listPurchases } from "../services/order.service.ts";
 import { paidOrderInvoiceForUser } from "../services/pdf.service.ts";
+import { paymentSettings } from "../services/discount.service.ts";
 
 const router = Router();
 router.use(requireDatabaseUser);
 
+router.get("/checkout/options", requireCustomer, async (req, res, next) => {
+  try {
+    const requestedCurrency = typeof req.query.currency === "string" ? req.query.currency.trim().toUpperCase() : undefined;
+    const currency = requestedCurrency && /^[A-Z]{3}$/.test(requestedCurrency) ? requestedCurrency : undefined;
+    res.json({ success: true, data: await paymentSettings(false, currency) });
+  } catch (error) { next(error); }
+});
+
 router.post("/checkout/sessions", requireCustomer, rateLimit("checkout", 12, 60_000, true), async (req, res, next) => {
   try {
     const input = parseOrThrow(checkoutSchema, req.body);
-    const checkout = await createCheckout(req.currentUser!, input.idempotencyKey, req.region);
+    const checkout = await createCheckout(req.currentUser!, input.idempotencyKey, req.region, "stripe", input.discountCode);
     res.status(201).json({ success: true, data: checkout });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/checkout/paypal/sessions", requireCustomer, rateLimit("paypal-checkout", 12, 60_000, true), async (req, res, next) => {
+  try {
+    const input = parseOrThrow(checkoutSchema, req.body);
+    const checkout = await createCheckout(req.currentUser!, input.idempotencyKey, req.region, "paypal", input.discountCode);
+    res.status(201).json({ success: true, data: checkout });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/checkout/paymob/sessions", requireCustomer, rateLimit("paymob-checkout", 12, 60_000, true), async (req, res, next) => {
+  try {
+    const input = parseOrThrow(checkoutSchema, req.body);
+    const checkout = await createCheckout(req.currentUser!, input.idempotencyKey, req.region, "paymob", input.discountCode);
+    res.status(201).json({ success: true, data: checkout });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/checkout/paypal/capture", requireCustomer, rateLimit("paypal-capture", 12, 60_000, true), async (req, res, next) => {
+  try {
+    const input = parseOrThrow(paypalCaptureSchema, req.body);
+    res.json({ success: true, data: await capturePaypalCheckout(req.currentUser!, input.token) });
   } catch (error) {
     next(error);
   }

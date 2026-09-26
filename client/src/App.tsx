@@ -40,6 +40,7 @@ const RefundPage = lazy(() => import('./routes/refund'))
 const AboutPage = lazy(() => import('./routes/about'))
 const ContactPage = lazy(() => import('./routes/contact'))
 const AdminContentPage = lazy(() => import('./routes/admin/content'))
+const AdminDiscountsPage = lazy(() => import('./routes/admin/discounts'))
 const ThemePreviewPage = lazy(() => import('./routes/theme-preview'))
 
 function SiteFooter() {
@@ -88,6 +89,7 @@ function App() {
               <Route path='content' element={<AdminContentPage />} />
               <Route path='orders' element={<AdminOrdersPage />} />
               <Route path='orders/:id' element={<AdminOrderDetailPage />} />
+              <Route path='discounts' element={<AdminDiscountsPage />} />
               <Route path='promotions' element={<PromotionsPage />} />
             </Route>
             <Route path='*' element={<NotFoundPage />} />

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import type { SiteContentType } from "@shared/types";
 import { Logo } from "./header";
+import { PaymentProviderMark } from "./payment-provider-mark";
 
 export default function Footer() {
   const year = new Date().getFullYear();
@@ -39,17 +40,17 @@ export default function Footer() {
             <div className="footer-socials" aria-label="Social media">
               {socials.instagram && (
                 <a href={socials.instagram} target="_blank" rel="noreferrer" aria-label="Instagram">
-                  <img src="/instagram.png" alt="" width={20} height={20} />
+                  <img src="/social/instagram.png" alt="" width={20} height={20} />
                 </a>
               )}
               {socials.youtube && (
                 <a href={socials.youtube} target="_blank" rel="noreferrer" aria-label="YouTube Shorts">
-                  <img src="/youtube-shorts.png" alt="" width={20} height={20} />
+                  <img src="/social/youtube-shorts.png" alt="" width={20} height={20} />
                 </a>
               )}
               {socials.tiktok && (
                 <a href={socials.tiktok} target="_blank" rel="noreferrer" aria-label="TikTok">
-                  <img src="/tiktok.png" alt="" width={20} height={20} />
+                  <img src="/social/tiktok.png" alt="" width={20} height={20} />
                 </a>
               )}
             </div>
@@ -74,15 +75,19 @@ export default function Footer() {
           {/* Payments */}
           <div className="footer-payments">
             <h3>Payments</h3>
-            <p>Secure checkout powered by Stripe. All transactions encrypted.</p>
+            <p>Secure checkout with Stripe, PayPal, or Paymob. All transactions encrypted.</p>
             <div className="payment-groups">
               <div className="payment-provider-block">
 
-                <div className="payment-badges" aria-label="Stripe payment methods">
-                  <span className="pay-badge" title="Visa"><img src="/visa.png" alt="Visa" width={20} height={20} /></span>
-                  <span className="pay-badge" title="Mastercard"><img src="/mastercard.png" alt="Mastercard" width={20} height={20} /></span>
-                  <span className="pay-badge" title="Google Pay"><img src="/google.png" alt="Google Pay" width={20} height={20} /></span>
-                  <span className="pay-badge" title="Apple Pay"><img src="/apple.png" alt="Apple Pay" width={20} height={20} /></span>
+                <div className="payment-badges" aria-label="Accepted payment methods">
+                  <span className="pay-badge" title="Visa" aria-label="Visa"><img src="/payments/visa.png" alt="" width={20} height={20} /></span>
+                  <span className="pay-badge" title="Mastercard" aria-label="Mastercard"><img src="/payments/mastercard.png" alt="" width={20} height={20} /></span>
+                  <span className="pay-badge" title="Google Pay" aria-label="Google Pay"><img src="/providers/google.svg" alt="" width={20} height={20} /></span>
+                  <span className="pay-badge" title="Apple Pay" aria-label="Apple Pay"><img src="/providers/apple.svg" alt="" width={20} height={20} /></span>
+                  <span className="pay-badge" title="Stripe" aria-label="Stripe"><PaymentProviderMark provider="stripe" /></span>
+                  <span className="pay-badge" title="PayPal" aria-label="PayPal"><PaymentProviderMark provider="paypal" /></span>
+                  <span className="pay-badge" title="Paymob" aria-label="Paymob"><PaymentProviderMark provider="paymob" /></span>
+
                 </div>
               </div>
             </div>

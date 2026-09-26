@@ -10,6 +10,8 @@ const webhookSchema = new Schema({
   processedAt: Date,
 }, { timestamps: true });
 export const StripeWebhookEventModel = models.StripeWebhookEvent ?? model("StripeWebhookEvent", webhookSchema);
+export const PaypalWebhookEventModel = models.PaypalWebhookEvent ?? model("PaypalWebhookEvent", webhookSchema);
+export const PaymobWebhookEventModel = models.PaymobWebhookEvent ?? model("PaymobWebhookEvent", webhookSchema);
 
 const auditSchema = new Schema({
   actorId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },

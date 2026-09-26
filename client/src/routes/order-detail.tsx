@@ -89,6 +89,10 @@ export default function OrderDetailPage() {
                                 <dt>Total Price</dt>
                                 <dd>{money(request.data.totalMinor, request.data.currency)}</dd>
                             </div>
+                            {request.data.paymentCurrency && request.data.paymentCurrency !== request.data.currency && request.data.paymentAmountMinor !== undefined && <div>
+                                <dt>Charged by {request.data.paymentProvider === "paymob" ? "Paymob" : "payment provider"}{request.data.paymentExchangeRate ? <small className="block">1 {request.data.currency} = {request.data.paymentExchangeRate.toLocaleString(undefined, { maximumFractionDigits: 4 })} {request.data.paymentCurrency}</small> : null}</dt>
+                                <dd>{money(request.data.paymentAmountMinor, request.data.paymentCurrency)}</dd>
+                            </div>}
                         </dl>
                     </article>
             }

@@ -3,8 +3,7 @@ import OrderModel, { type OrderDocument } from "../models/order.ts";
 import TransactionModel from "../models/transaction.ts";
 import { StripeWebhookEventModel } from "../models/operations.ts";
 import { failOrderPayment, fulfillPaidOrder, refundPaidOrder } from "../services/fulfillment.service.ts";
-import { paidOrderInvoiceForAdmin } from "../services/pdf.service.ts";
-import { sendEmailTemplate } from "../services/email.service.ts";
+import { sendInvoiceEmail, sendRefundEmail } from "../services/payment-notification.service.ts";
 import { validateStripeCheckoutAmounts, verifyStripeSignature } from "../services/stripe.service.ts";
 
 interface StripeObject {
@@ -52,44 +51,6 @@ function applyStripeDiscount(order: OrderDocument, discountMinor: number): void 
     item.totalMinor = item.priceMinor - item.discountMinor;
     allocated += item.discountMinor;
   });
-}
-
-async function sendInvoiceEmail(orderId: unknown): Promise<void> {
-  const order = await OrderModel.findById(orderId);
-  if (!order || order.invoiceEmailSentAt || order.status !== "paid") return;
-  const invoice = await paidOrderInvoiceForAdmin(String(order._id));
-  await sendEmailTemplate({
-    to: order.customerSnapshot?.email ?? "",
-    type: "invoice",
-    variables: {
-      name: order.customerSnapshot?.name,
-      orderNumber: order.orderNumber,
-      amountMinor: order.totalMinor,
-      currency: order.currency,
-      orderDate: (order.paidAt ?? order.updatedAt ?? new Date()).toISOString(),
-      items: order.items.map((item: { name: string; totalMinor: number }) => ({ name: item.name, priceMinor: item.totalMinor })),
-    },
-    attachment: { filename: invoice.filename, content: invoice.pdf },
-    idempotencyKey: `invoice-order/${String(order._id)}`,
-  });
-  await OrderModel.updateOne({ _id: order._id }, { $set: { invoiceEmailSentAt: new Date() } });
-}
-
-async function sendRefundEmail(orderId: unknown): Promise<void> {
-  const order = await OrderModel.findById(orderId);
-  if (!order || order.refundEmailSentAt || order.status !== "refunded") return;
-  await sendEmailTemplate({
-    to: order.customerSnapshot?.email ?? "",
-    type: "refund",
-    variables: {
-      name: order.customerSnapshot?.name,
-      orderNumber: order.orderNumber,
-      amountMinor: order.refundAmountMinor ?? order.totalMinor,
-      currency: order.currency,
-    },
-    idempotencyKey: `refund-order/${String(order._id)}`,
-  });
-  await OrderModel.updateOne({ _id: order._id }, { $set: { refundEmailSentAt: new Date() } });
 }
 
 export async function stripeWebhookHandler(req: Request, res: Response): Promise<void> {

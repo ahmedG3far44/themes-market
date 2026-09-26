@@ -2,7 +2,7 @@
 /* oxlint-disable react-hooks/exhaustive-deps */
 import type { PurchaseOverviewType } from "@shared/types";
 import { CheckCircle2, Clock3, PackageOpen, XCircle } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ErrorMessage } from "../components/ui/error-message";
 import { ErrorState } from "./error/error";
@@ -24,7 +24,10 @@ export default function PurchasesPage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const returnedOrderId = params.get("order_id") ?? sessionStorage.getItem("pendingOrderId");
-  const returningFromPayment = params.get("payment") === "processing";
+  const paymentReturn = params.get("payment");
+  const paypalToken = params.get("token");
+  const returningFromPayment = paymentReturn === "processing" || paymentReturn === "paypal" || paymentReturn === "paymob";
+  const paypalCaptureStarted = useRef(false);
   const [confirmation, setConfirmation] = useState<"idle" | "processing" | "paid" | "failed" | "delayed">(returningFromPayment ? "processing" : "idle");
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const load = useCallback(() => request.run(api.get<PurchaseOverviewType>("/purchases")), [request.run]);
@@ -62,9 +65,27 @@ export default function PurchasesPage() {
       if (attempts < 30) timer = window.setTimeout(() => void poll(), 2000);
       else setConfirmation("delayed");
     };
-    void poll();
+    const confirmAndPoll = async () => {
+      if (paymentReturn === "paypal") {
+        if (!paypalToken) {
+          if (active) setConfirmation("failed");
+          return;
+        }
+        if (!paypalCaptureStarted.current) {
+          paypalCaptureStarted.current = true;
+          try {
+            await api.post("/checkout/paypal/capture", { token: paypalToken });
+          } catch {
+            if (active) setConfirmation("failed");
+            return;
+          }
+        }
+      }
+      await poll();
+    };
+    void confirmAndPoll();
     return () => { active = false; if (timer) window.clearTimeout(timer); };
-  }, [cart.refresh, load, navigate, notify, returnedOrderId, returningFromPayment]);
+  }, [cart.refresh, load, navigate, notify, paypalToken, paymentReturn, returnedOrderId, returningFromPayment]);
 
   const getFile = async (id: string) => {
     setDownloadingId(id);
@@ -100,7 +121,7 @@ export default function PurchasesPage() {
       {confirmation !== "idle" && <div className={`payment-confirmation ${confirmation}`} role="status" aria-live="polite">
         {confirmation === "processing" ? <Spinner size="sm" /> : confirmation === "paid" ? <CheckCircle2 /> : confirmation === "failed" ? <XCircle /> : <Clock3 />}
         <div><strong>{confirmation === "paid" ? "Payment confirmed" : confirmation === "failed" ? "Payment was not completed" : confirmation === "delayed" ? "Confirmation is taking longer than expected" : "Confirming your payment"}</strong>
-          <span>{confirmation === "paid" ? "Your cart is empty and your download is now available." : confirmation === "failed" ? "Your order was not charged successfully." : "This page will update when Stripe's signed webhook arrives."}</span></div>
+          <span>{confirmation === "paid" ? "Your cart is empty and your download is now available." : confirmation === "failed" ? "Your order was not charged successfully." : "This page will update when the payment provider confirms the transaction."}</span></div>
       </div>}
 
       {download.error && <ErrorMessage message={download.error} onDismiss={download.clearError} />}

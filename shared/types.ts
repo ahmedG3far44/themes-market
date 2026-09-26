@@ -2,6 +2,7 @@ export type UserRole = "admin" | "customer";
 export type UserStatus = "active" | "blocked";
 export type UserProvider = "email" | "google" | "github" | "microsoft" | "apple" | "unknown";
 export type TransactionStatus = "pending" | "success" | "declined";
+export type PaymentProvider = "stripe" | "paypal" | "paymob";
 export type BillingType = "subscription" | "one_time";
 export type PlanDuration = "one_time" | "monthly" | "yearly" | "custom";
 
@@ -61,7 +62,7 @@ export interface TransactionType {
   userId: IUser | string;
   planId?: PlanType | string;
   product?: { name: string; description?: string };
-  provider: "stripe" | "manual";
+  provider: "stripe" | "paypal" | "paymob" | "manual";
   externalId?: string;
   amount: number;
   amountMinor?: number;
@@ -148,7 +149,56 @@ export interface CatalogResponse {
 
 export interface DiscountSnapshot {
   code: string;
-  percentage: number;
+  type?: "percentage" | "fixed";
+  percentage?: number;
+  percentageBps?: number;
+  amountMinor?: number;
+  currency?: string;
+}
+
+export interface DiscountType {
+  id: string;
+  code: string;
+  type: "percentage" | "fixed";
+  percentageBps?: number;
+  amountMinor?: number;
+  currency?: string;
+  usageLimit: number;
+  timesUsed: number;
+  expiresAt: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DiscountQuote {
+  code: string;
+  type: "percentage" | "fixed";
+  percentageBps?: number;
+  amountMinor?: number;
+  currency?: string;
+  discountMinor: number;
+  subtotalMinor: number;
+  taxMinor: number;
+  taxPercentage?: number;
+  taxStatus: "estimated" | "calculated_at_checkout";
+  totalMinor: number;
+  expiresAt: string;
+}
+
+export interface PaymentProviderOption {
+  id: PaymentProvider;
+  label: string;
+  enabled: boolean;
+  configured?: boolean;
+  selected?: boolean;
+  supportedCurrencies?: string[];
+}
+
+export interface PaymentSettingsType {
+  enabledPaymentProviders: PaymentProvider[];
+  providers: PaymentProviderOption[];
+  paymobUsdToEgpRate?: number;
 }
 
 export interface CartType {
@@ -179,7 +229,7 @@ export interface OrderType {
   orderNumber: string;
   userId: IUser | string;
   status: OrderStatus;
-  paymentProvider: "stripe";
+  paymentProvider: PaymentProvider;
   currency: string;
   subtotalMinor: number;
   discountMinor: number;
@@ -187,6 +237,7 @@ export interface OrderType {
   totalMinor: number;
   paymentAmountMinor?: number;
   paymentCurrency?: string;
+  paymentExchangeRate?: number;
   discountSnapshot?: DiscountSnapshot;
   customerSnapshot?: { name: string; email: string; phone?: string };
   regionSnapshot?: { country?: string; region?: string; city?: string; timezone?: string };

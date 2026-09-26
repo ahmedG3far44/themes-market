@@ -10,7 +10,7 @@ const fallbackTerms = `<p>By accessing Portfolio Market you agree to these Terms
 <h2>1. Licenses</h2>
 <p>Each theme includes a single-portfolio license for the version you purchased. You may customize it for one live portfolio/domain. Redistribution, resale or sharing source files is prohibited.</p>
 <h2>2. Purchases &amp; delivery</h2>
-<p>Prices are shown at checkout. After successful payment via Stripe, downloads are unlocked instantly and remain available for 5 downloads. You are responsible for backing up files.</p>
+<p>Prices are shown at checkout. After successful payment via Stripe or PayPal, downloads are unlocked instantly and remain available for 5 downloads. You are responsible for backing up files.</p>
 <h2>3. User responsibilities</h2>
 <ul>
 <li>Provide accurate account information.</li>

@@ -3,8 +3,9 @@
 
 import Header from "../components/header";
 
+import type { DiscountQuote, PaymentProvider, PaymentSettingsType } from "@shared/types";
 import { ArrowLeft, ShoppingBag, Trash2 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { CartOrderSummary } from "../components/cart-order-summary";
 import { ErrorMessage } from "../components/ui/error-message";
@@ -18,21 +19,38 @@ import { money } from "../lib/format";
 import { ErrorState } from "./error/error";
 
 export default function CartPage() {
-  const { user } = useAppAuth();
   const cartState = useCart();
+  const { user } = useAppAuth();
+
   const [isRedirecting, setRedirecting] = useState(false);
+  const [paymentProvider, setPaymentProvider] = useState<PaymentProvider>("paypal");
+
+  const [discount, setDiscount] = useState<DiscountQuote | null>(null);
   const redirectLock = useRef(false);
   const checkout = useAsync<{ orderId: string; checkoutUrl: string }>();
+  const paymentOptions = useAsync<PaymentSettingsType>();
   const cart = cartState.cart;
+  const availableProviders = paymentOptions.data?.enabledPaymentProviders ?? [];
+  const selectedProvider = availableProviders.includes(paymentProvider) ? paymentProvider : availableProviders[0];
+
+  useEffect(() => {
+    if (!cart?.currency) return;
+    void paymentOptions.run(api.get<PaymentSettingsType>(`/checkout/options?currency=${encodeURIComponent(cart.currency)}`)).catch(() => undefined);
+  }, [cart?.currency, paymentOptions.run]);
+
+  useEffect(() => { setDiscount(null); }, [cart?.updatedAt]);
 
   const pay = async () => {
-    if (redirectLock.current) return;
+    if (redirectLock.current || !selectedProvider) return;
     redirectLock.current = true;
     setRedirecting(true);
     try {
-      const result = await checkout.run(api.post("/checkout/sessions", { idempotencyKey: crypto.randomUUID() }));
+      const endpoint = selectedProvider === "paypal"
+        ? "/checkout/paypal/sessions"
+        : selectedProvider === "paymob" ? "/checkout/paymob/sessions" : "/checkout/sessions";
+      const result = await checkout.run(api.post(endpoint, { idempotencyKey: crypto.randomUUID(), ...(discount ? { discountCode: discount.code } : {}) }));
       const destination = new URL(result.checkoutUrl);
-      if (destination.protocol !== "https:") throw new Error("Stripe returned an invalid checkout URL");
+      if (destination.protocol !== "https:") throw new Error("The payment provider returned an invalid checkout URL");
       sessionStorage.setItem("pendingOrderId", result.orderId);
       window.location.assign(destination.toString());
     } catch {
@@ -63,7 +81,7 @@ export default function CartPage() {
         <span className="cart-count-pill"><ShoppingBag size={16} />{cart?.items.length ?? 0} {cart?.items.length === 1 ? "theme" : "themes"}</span>
       </div>
 
-      {checkout.error && <ErrorMessage message={checkout.error} onDismiss={checkout.clearError} />}
+      {(checkout.error || paymentOptions.error) && <ErrorMessage message={(checkout.error || paymentOptions.error)!} onDismiss={() => { checkout.clearError(); paymentOptions.clearError(); }} />}
 
       {cartState.isLoading && !cart ?
         <div className="page-loader"><Spinner size="md" /></div>
@@ -86,7 +104,18 @@ export default function CartPage() {
                     <button className="icon-button danger" disabled={checkoutBusy || cartState.isLoading} onClick={() => void cartState.remove(item.themeId).catch(() => undefined)} aria-label={`Remove ${item.name}`}><Trash2 size={17} /></button>
                   </article>)}</div>
               </section>
-              <CartOrderSummary cart={cart} checkoutBusy={checkoutBusy} onCheckout={() => void pay()} />
+              <CartOrderSummary
+                cart={cart}
+                checkoutBusy={checkoutBusy}
+                paymentProvider={selectedProvider}
+                availablePaymentProviders={availableProviders}
+                paymentOptionsLoading={paymentOptions.isLoading}
+                paymobUsdToEgpRate={paymentOptions.data?.paymobUsdToEgpRate}
+                discount={discount}
+                onDiscountChange={setDiscount}
+                onPaymentProviderChange={setPaymentProvider}
+                onCheckout={() => void pay()}
+              />
             </div>
           </>}
     </main>

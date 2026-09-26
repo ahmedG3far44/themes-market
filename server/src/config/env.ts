@@ -20,6 +20,20 @@ const env = {
   STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY ?? process.env.STRIPE_KEY_SECRETS ?? "",
   STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET ?? process.env.STRIPE_WEBHOOK_SECRETS ?? "",
 
+  PAYPAL_CLIENT_ID: process.env.PAYPAL_CLIENT_ID ?? "",
+  PAYPAL_CLIENT_SECRET: process.env.PAYPAL_CLIENT_SECRET ?? "",
+  PAYPAL_WEBHOOK_ID: process.env.PAYPAL_WEBHOOK_ID ?? "",
+  PAYPAL_ENVIRONMENT: process.env.PAYPAL_ENVIRONMENT === "live" ? "live" as const : "sandbox" as const,
+
+  PAYMOB_SECRET_KEY: process.env.PAYMOB_SECRET_KEY ?? "",
+  PAYMOB_PUBLIC_KEY: process.env.PAYMOB_PUBLIC_KEY ?? "",
+  PAYMOB_INTEGRATION_ID: process.env.PAYMOB_INTEGRATION_ID ?? "",
+  PAYMOB_INTEGRATION_IDS: process.env.PAYMOB_INTEGRATION_IDS ?? "",
+  PAYMOB_CURRENCY: (process.env.PAYMOB_CURRENCY ?? "EGP").trim().toUpperCase(),
+  PAYMOB_HMAC_SECRET: process.env.PAYMOB_HMAC_SECRET ?? "",
+  PAYMOB_BASE_URL: (process.env.PAYMOB_BASE_URL ?? "https://accept.paymob.com").replace(/\/$/, ""),
+  PUBLIC_API_URL: (process.env.PUBLIC_API_URL ?? process.env.CLIENT_URL?.split(",")[0] ?? "http://localhost:3000").replace(/\/$/, ""),
+
   RESEND_API_KEY: process.env.RESEND_API_KEY ?? "",
   EMAIL_FROM_ACCOUNT: process.env.EMAIL_FROM_ACCOUNT ?? "Foliokit Account <account@foliokit.store>",
   EMAIL_FROM_BILLING: process.env.EMAIL_FROM_BILLING ?? "Foliokit Billing <billing@foliokit.store>",

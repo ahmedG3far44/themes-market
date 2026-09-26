@@ -45,7 +45,7 @@ export default function AdminOrdersPage() {
 
   return <main className="admin-page">
     <PageHeader eyebrow="Commerce" title="Marketplace orders" description="Review payment state, immutable order totals, customers, and the exact themes sold." />
-    <section className="panel data-panel">
+    <section className="panel data-panel orders-list-panel">
       <div className="filters-row">
         <form className="search-box" onSubmit={search}>
           <Search size={18} />
@@ -63,18 +63,48 @@ export default function AdminOrdersPage() {
       </div>
       {request.isLoading && !request.data ? <TableSkeleton columns={6} /> : !request.data?.items.length ? <div className="empty-state">No orders match this view.</div> : <div className="table-scroll">
         <table>
-          <thead><tr><th>Order</th><th>Customer</th><th>Items</th><th>Total</th><th>Status</th><th>Date</th><th /></tr></thead>
-          <tbody>{request.data.items.map((order) => <tr key={order.id}>
-            <td><strong>{order.orderNumber}</strong></td>
-            <td><div className="user-cell"><span className="avatar-fallback">{order.user?.name?.slice(0, 1) ?? "?"}</span><div><strong>{order.user?.name ?? "Deleted user"}</strong><small>{order.user?.email}</small></div></div></td>
-            <td>{order.items.length}</td>
-            <td><strong>{money(order.totalMinor, order.currency)}</strong></td>
-            <td><span className={`status-pill ${order.status === "paid" ? "active" : order.status === "pending" ? "pending" : "blocked"}`}>{order.status}</span></td>
-            <td>{dateTime(order.createdAt)}</td>
-            <td><Link className="icon-button" to={`/admin/orders/${order.id}`} aria-label="View order"><Eye size={17} /></Link></td>
-          </tr>)}</tbody>
+          <thead>
+            <tr>
+              <th>Order</th>
+              <th>Customer</th>
+              <th>Items</th>
+              <th>Total</th>
+              <th>Status</th>
+              <th>Date</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {request.data.items.map((order) => <tr key={order.id}>
+              <td>
+                <strong>{order.orderNumber}</strong>
+              </td>
+              <td>
+                <div className="user-cell">
+                  <span className="avatar-fallback">{order.user?.name?.slice(0, 1) ?? "?"}</span>
+                  <div>
+                    <strong>{order.user?.name ?? "Deleted user"}</strong>
+                    <small>{order.user?.email}</small>
+                  </div>
+                </div>
+              </td>
+              <td>{order.items.length}</td>
+              <td>
+                <strong>{money(order.totalMinor, order.currency)}</strong>
+              </td>
+              <td><span className={`status-pill ${order.status === "paid" ? "active" : order.status === "pending" ? "pending" : "blocked"}`}>{order.status}</span></td>
+              <td>
+                {dateTime(order.createdAt)}
+              </td>
+              <td>
+                <Link className="icon-button" to={`/admin/orders/${order.id}`} aria-label="View order"><Eye size={17} /></Link>
+              </td>
+            </tr>
+            )}
+          </tbody>
         </table>
-      </div>}
+      </div>
+      }
       {request.data && <div className="pagination"><span>{request.data.total} orders</span><div>
         <button disabled={filters.page <= 1} onClick={() => setFilters((value) => ({ ...value, page: value.page - 1 }))}>Previous</button>
         <span>Page {request.data.page} of {request.data.pages}</span>

@@ -5,6 +5,7 @@ import UploadAssetModel from "../models/upload-asset.ts";
 import { AppError } from "../utils/app-error.ts";
 import { serializeAsset } from "./upload.service.ts";
 import { calculateMarketplaceTaxEstimate } from "./stripe.service.ts";
+import { allocateDiscount, quoteDiscount } from "./discount.service.ts";
 
 export async function getCart(userId: unknown, customerIp?: string) {
   const cart = await CartModel.findOne({ userId }).lean();
@@ -48,3 +49,23 @@ export async function addCartItem(userId: unknown, themeId: string, customerIp?:
 }
 
 export async function removeCartItem(userId: unknown, themeId: string, customerIp?: string) { await CartModel.updateOne({ userId }, { $pull: { items: { themeId } } }); return getCart(userId, customerIp); }
+
+export async function getDiscountQuoteForCart(userId: unknown, code: string, customerIp?: string) {
+  const cart = await getCart(userId, customerIp);
+  if (!cart.items.length) throw new AppError(409, "CART_EMPTY", "Add a theme before applying a discount code");
+  const discount = await quoteDiscount(code, cart.currency, cart.subtotalMinor);
+  const allocations = allocateDiscount(cart.items, discount.discountMinor);
+  const tax = await calculateMarketplaceTaxEstimate({
+    items: cart.items.map((item, index) => ({ reference: item.themeId, amountMinor: item.priceMinor - allocations[index] })),
+    currency: cart.currency,
+    customerIp,
+  });
+  return {
+    ...discount,
+    subtotalMinor: cart.subtotalMinor,
+    taxMinor: tax.taxMinor,
+    taxPercentage: tax.taxPercentage,
+    taxStatus: tax.taxStatus,
+    totalMinor: cart.subtotalMinor - discount.discountMinor + tax.taxMinor,
+  };
+}

@@ -10,6 +10,8 @@ import { verifyRegion } from './middlewares/verifyRegion.ts';
 import { connectDatabase } from './config/database.ts';
 import { errorHandler, notFound } from './middlewares/error.ts';
 import { stripeWebhookHandler } from './routes/webhook.route.ts';
+import { paypalWebhookHandler } from './routes/paypal-webhook.route.ts';
+import { paymobWebhookHandler } from './routes/paymob-webhook.route.ts';
 import { emailConfigurationIssues } from './services/email.service.ts';
 
 
@@ -33,6 +35,8 @@ app.use(clerkMiddleware({
 }));
 
 app.post("/api/v1/webhooks/stripe", express.raw({ type: "application/json", limit: "256kb" }), stripeWebhookHandler);
+app.post("/api/v1/webhooks/paypal", express.raw({ type: "application/json", limit: "256kb" }), paypalWebhookHandler);
+app.post("/api/v1/webhooks/paymob", express.json({ limit: "256kb" }), paymobWebhookHandler);
 
 app.use(express.json({ limit: "1mb" }));
 
